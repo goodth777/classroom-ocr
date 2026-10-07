@@ -221,7 +221,7 @@ test('buildGrid maps submissions into student x work cells', () => {
 
 - [ ] **Step 2: 실패 확인**
 
-Run: `cd /c/claude_code/classroom-ocr && node --test test/`
+Run: `cd /c/claude_code/classroom-ocr && node --test`
 Expected: FAIL — `Cannot find module '../gas/Grid.js'`
 
 - [ ] **Step 3: 구현** — `gas/Grid.js`
@@ -257,7 +257,7 @@ if (typeof module !== 'undefined') module.exports = { buildGrid };
 
 - [ ] **Step 4: 통과 확인**
 
-Run: `node --test test/`
+Run: `node --test`
 Expected: PASS (1 test)
 
 - [ ] **Step 5: Commit**
@@ -469,7 +469,7 @@ test('toCsv writes BOM, quotes, and falls back to state label', () => {
 
 - [ ] **Step 3: 실패 확인**
 
-Run: `node --test test/`
+Run: `node --test`
 Expected: FAIL — `Cannot find module .../web/lib.js`
 
 - [ ] **Step 4: 구현** — `web/lib.js`
@@ -520,7 +520,7 @@ export function toCsv(grid, texts) {
 
 - [ ] **Step 5: 통과 확인**
 
-Run: `node --test test/`
+Run: `node --test`
 Expected: PASS (5 tests)
 
 - [ ] **Step 6: Commit**
@@ -605,7 +605,7 @@ test('PWA token scopes match the GAS manifest', () => {
 
 - [ ] **Step 2: 실패 확인**
 
-Run: `node --test test/`
+Run: `node --test`
 Expected: FAIL — `Cannot find module .../web/api.js`, `.../web/config.js`
 
 - [ ] **Step 3: 구현** — `web/config.js` (클라이언트 ID와 배포 ID는 Task 1에서 메모한 값으로 바꾼다)
@@ -679,7 +679,7 @@ export const run = makeRunner({ scriptId: SCRIPT_ID, getToken });
 
 - [ ] **Step 4: 통과 확인**
 
-Run: `node --test test/`
+Run: `node --test`
 Expected: PASS (9 tests)
 
 - [ ] **Step 5: Commit**
@@ -938,7 +938,7 @@ cd /c/claude_code/classroom-ocr && npx --yes serve web -l 5173
 
 - [ ] **Step 9: 단위 테스트 회귀 확인 후 Commit**
 
-Run: `node --test test/` → PASS (9 tests)
+Run: `node --test` → PASS (9 tests)
 ```bash
 git add web tools && git commit -m "feat: PWA shell with Google sign-in and role routing
 
@@ -985,15 +985,15 @@ export async function studentHome() {
     </section>`);
 }
 
-// Shrinks the photo so the upload stays small; 2000px matched the OCR test images.
-async function resizeImage(file, max = 2000) {
+// Shrinks the photo so the upload stays small; the whole submission must fit one scripts.run request.
+async function resizeImage(file, max = 1600) {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const cv = document.createElement('canvas');
   cv.width = Math.round(bmp.width * k);
   cv.height = Math.round(bmp.height * k);
   cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
-  const url = cv.toDataURL('image/jpeg', 0.85);
+  const url = cv.toDataURL('image/jpeg', 0.8);
   return { url, base64: url.split(',')[1] };
 }
 
@@ -1281,4 +1281,4 @@ Google Cloud → 사용자 인증 정보 → OAuth 클라이언트 → 승인된
 
 - [ ] **Step 5: 확인 결과 기록 후 Commit**
 
-문제가 있으면 고치고 다시 확인한다. 마지막에 `node --test test/` → PASS(9 tests).
+문제가 있으면 고치고 다시 확인한다. 마지막에 `node --test` → PASS(9 tests).
