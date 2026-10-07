@@ -1,39 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { makeRunner } from '../web/api.js';
+import { makeCall } from '../web/api.js';
 
-const reply = (status, body) => ({ status, json: async () => body });
+const reply = body => ({ json: async () => body });
+const noSleep = async () => {};
 
-test('run posts to scripts.run and returns the result', async () => {
+test('call posts the action with auth as text/plain JSON and returns data', async () => {
   let seen;
-  const run = makeRunner({
-    scriptId: 'SID',
-    getToken: async () => 'T',
-    fetchFn: async (url, opts) => { seen = { url, opts }; return reply(200, { done: true, response: { result: 42 } }); },
+  const call = makeCall({
+    url: 'U', auth: () => ({ token: 'T' }), sleep: noSleep,
+    fetchFn: async (url, opts) => { seen = { url, opts }; return reply({ ok: true, data: 42 }); },
   });
-  assert.strictEqual(await run('ocr', 'abc', 'image/jpeg'), 42);
-  assert.strictEqual(seen.url, 'https://script.googleapis.com/v1/scripts/SID:run');
-  assert.strictEqual(seen.opts.headers.Authorization, 'Bearer T');
-  assert.deepStrictEqual(JSON.parse(seen.opts.body), { function: 'ocr', parameters: ['abc', 'image/jpeg'] });
+  assert.strictEqual(await call('me', { x: 1 }), 42);
+  assert.strictEqual(seen.url, 'U');
+  assert.strictEqual(seen.opts.method, 'POST');
+  assert.strictEqual(seen.opts.headers['Content-Type'], 'text/plain;charset=utf-8');
+  assert.deepStrictEqual(JSON.parse(seen.opts.body), { action: 'me', token: 'T', x: 1 });
 });
 
-test('run throws the script error message', async () => {
-  const run = makeRunner({
-    scriptId: 'SID',
-    getToken: async () => 'T',
-    fetchFn: async () => reply(200, { done: true, error: { message: 'ScriptError', details: [{ errorMessage: '과제를 찾을 수 없어요.' }] } }),
-  });
-  await assert.rejects(run('submit'), { message: '과제를 찾을 수 없어요.' });
+test('server errors keep their message and code', async () => {
+  const call = makeCall({ url: 'U', auth: () => ({}), sleep: noSleep,
+    fetchFn: async () => reply({ ok: false, code: 'auth', error: '다시 참여해 주세요.' }) });
+  await assert.rejects(call('me'), { message: '다시 참여해 주세요.', code: 'auth' });
 });
 
-test('run refreshes the token once on 401', async () => {
-  const forced = [];
-  let calls = 0;
-  const run = makeRunner({
-    scriptId: 'SID',
-    getToken: async force => { forced.push(!!force); return force ? 'NEW' : 'OLD'; },
-    fetchFn: async () => (++calls === 1 ? reply(401, {}) : reply(200, { response: { result: 'ok' } })),
-  });
-  assert.strictEqual(await run('whoami'), 'ok');
-  assert.deepStrictEqual(forced, [false, true]);
+test('busy and network failures are retried, reporting each retry', async () => {
+  const retries = [];
+  let n = 0;
+  const call = makeCall({ url: 'U', auth: () => ({}), sleep: noSleep,
+    fetchFn: async () => {
+      n++;
+      if (n === 1) throw new TypeError('Failed to fetch');
+      if (n === 2) return reply({ ok: false, code: 'busy', error: 'busy' });
+      return reply({ ok: true, data: 'done' });
+    } });
+  assert.strictEqual(await call('ocr', {}, { onRetry: i => retries.push(i) }), 'done');
+  assert.deepStrictEqual(retries, [1, 2]);
+});
+
+test('gives up with an offline error after the retries', async () => {
+  const call = makeCall({ url: 'U', auth: () => ({}), sleep: noSleep, fetchFn: async () => { throw new TypeError('x'); } });
+  await assert.rejects(call('me'), { code: 'offline' });
 });

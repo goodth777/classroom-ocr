@@ -72,3 +72,11 @@ test('dueLabel formats month, day and weekday', () => {
   assert.strictEqual(dueLabel('2026-10-09'), '10월 9일(금)');
   assert.strictEqual(dueLabel(''), '');
 });
+
+test('lib parseRoster matches the server copy', async () => {
+  const { parseRoster } = await import('../web/lib.js');
+  const { createRequire } = await import('node:module');
+  const core = createRequire(import.meta.url)('../gas/Core.js');
+  const text = '번호\t이름\n1\t강수아\n2, 김민준\n\n 3  박지호 \n3\t중복\nabc\t무시\n12\tJohn Kim';
+  assert.deepStrictEqual(parseRoster(text), core.parseRoster(text));
+});

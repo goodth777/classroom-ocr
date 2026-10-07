@@ -68,3 +68,17 @@ export function toCsv(grid, texts) {
   ];
   return '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n');
 }
+
+// ponytail: same rules as parseRoster in gas/Core.js (GAS can't share modules); test/lib.test.mjs keeps them in step.
+// Used only to preview "N명을 읽었어요" before sending the paste to the server.
+export function parseRoster(text) {
+  const seen = {};
+  const out = [];
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const m = /^\s*(\d{1,3})\s*[\t,]?\s*(.+?)\s*$/.exec(line);
+    if (!m || seen[m[1]]) return;
+    seen[m[1]] = true;
+    out.push({ number: +m[1], name: m[2] });
+  });
+  return out;
+}
