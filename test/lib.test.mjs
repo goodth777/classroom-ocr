@@ -39,3 +39,8 @@ test('toCsv writes BOM, quotes, and falls back to state label', () => {
   assert.strictEqual(lines[1], '"A","첫 줄\n둘째 ""줄""","제출"');
   assert.strictEqual(lines[2], '"B","반환됨","미제출"');
 });
+
+test('toCsv neutralizes formula injection', () => {
+  const csv = toCsv(grid, { s1: { w1: '=1+1' } });
+  assert.ok(csv.includes(`"'=1+1"`));
+});

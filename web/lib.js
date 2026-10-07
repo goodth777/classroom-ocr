@@ -29,7 +29,11 @@ export function summarize(grid) {
 }
 
 export function toCsv(grid, texts) {
-  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // A leading ' stops spreadsheets from evaluating =, +, -, @ cells as formulas.
+  const q = v => {
+    const s = String(v ?? '');
+    return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+  };
   const rows = [
     ['학생', ...grid.works.map(w => w.title)],
     ...grid.students.map(s => [
