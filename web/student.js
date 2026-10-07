@@ -60,20 +60,25 @@ export async function studentEditor(courseId, workId) {
     const file = e.target.files[0];
     if (!file) return;
     const label = $('#capLabel');
-    const { url, base64 } = await resizeImage(file);
-    $('#preview').src = url;
-    $('#preview').hidden = false;
-    label.textContent = '글자 읽는 중…';
     try {
-      const t = await run('ocr', base64, 'image/jpeg');
+      const { url, base64 } = await resizeImage(file);
+      $('#preview').src = url;
+      $('#preview').hidden = false;
       photos.push(base64);
-      text.value = text.value.trim() ? `${text.value}\n\n${t}` : t;
-      saveDraft(key, text.value);
-      label.textContent = '📷 한 장 더 촬영';
+      label.textContent = '글자 읽는 중…';
+      try {
+        const t = await run('ocr', base64, 'image/jpeg');
+        text.value = text.value.trim() ? `${text.value}\n\n${t}` : t;
+        saveDraft(key, text.value);
+        label.textContent = '📷 한 장 더 촬영';
+      } catch {
+        label.textContent = '읽지 못했어요. 다시 촬영하거나 직접 입력하세요';
+      }
     } catch {
       label.textContent = '읽지 못했어요. 다시 촬영하거나 직접 입력하세요';
+    } finally {
+      e.target.value = '';
     }
-    e.target.value = '';
   };
 
   $('#submit').onclick = async () => {
