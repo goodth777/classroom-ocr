@@ -1,5 +1,5 @@
 import { run } from './api.js';
-import { render, loading, $ } from './ui.js';
+import { render, loading, $, currentNav, isCurrent } from './ui.js';
 import { esc, stateLabel, DONE } from './lib.js';
 
 let cards = [];
@@ -9,8 +9,11 @@ const saveDraft = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const clearDraft = k => { try { localStorage.removeItem(k); } catch {} };
 
 export async function studentHome() {
+  const n = currentNav();
   loading();
-  cards = await run('listMyAssignments');
+  const list = await run('listMyAssignments');
+  if (!isCurrent(n)) return;
+  cards = list;
   if (!cards.length) {
     return render('<section class="center"><div class="card hero"><p class="muted">아직 받은 과제가 없어요.</p></div></section>');
   }
@@ -24,21 +27,27 @@ export async function studentHome() {
     </section>`);
 }
 
-// Shrinks the photo so the upload stays small; 2000px matched the OCR test images.
-async function resizeImage(file, max = 2000) {
+// Shrinks the photo so the upload stays small (the whole submission must fit one scripts.run request).
+async function resizeImage(file, max = 1600) {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
   const cv = document.createElement('canvas');
   cv.width = Math.round(bmp.width * k);
   cv.height = Math.round(bmp.height * k);
   cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
-  const url = cv.toDataURL('image/jpeg', 0.85);
+  const url = cv.toDataURL('image/jpeg', 0.8);
   return { url, base64: url.split(',')[1] };
 }
 
 export async function studentEditor(courseId, workId) {
-  if (!cards.length) { loading(); cards = await run('listMyAssignments'); }
-  const c = cards.find(x => x.courseId === courseId && x.workId === workId);
+  const n = currentNav();
+  if (!cards.length) {
+    loading();
+    const list = await run('listMyAssignments');
+    if (!isCurrent(n)) return;
+    cards = list;
+  }
+  const c =cards.find(x => x.courseId === courseId && x.workId === workId);
   if (!c) throw new Error('과제를 찾을 수 없어요.');
   const key = `draft:${courseId}:${workId}`;
   const photos = [];
@@ -60,6 +69,13 @@ export async function studentEditor(courseId, workId) {
     const file = e.target.files[0];
     if (!file) return;
     const label = $('#capLabel');
+    if (photos.length >= 5) {
+      label.textContent = '사진은 5장까지 올릴 수 있어요';
+      e.target.value = '';
+      return;
+    }
+    const sb = $('#submit');
+    sb.disabled = true;
     try {
       const { url, base64 } = await resizeImage(file);
       $('#preview').src = url;
@@ -77,6 +93,7 @@ export async function studentEditor(courseId, workId) {
     } catch {
       label.textContent = '읽지 못했어요. 다시 촬영하거나 직접 입력하세요';
     } finally {
+      sb.disabled = false;
       e.target.value = '';
     }
   };

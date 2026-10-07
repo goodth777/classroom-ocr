@@ -1,5 +1,5 @@
 import { run } from './api.js';
-import { render, loading, $, fail } from './ui.js';
+import { render, loading, $, fail, currentNav, isCurrent } from './ui.js';
 import { esc, stateLabel, DONE, summarize, toCsv } from './lib.js';
 
 export function teacherHome(me) {
@@ -17,16 +17,18 @@ function download(name, text) {
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
   a.download = name;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 
 const cellOf = (grid, sid, wid) => (grid.cells[sid] || {})[wid];
 
 export async function teacherCourse(courseId, me) {
+  const n = currentNav();
   loading();
   const course = me.teaching.find(c => c.id === courseId);
   if (!course) throw new Error('수업을 찾을 수 없어요.');
   const grid = await run('getGrid', courseId);
+  if (!isCurrent(n)) return;
   const sum = summarize(grid);
   const li = (a, b) => `<li><span>${esc(a)}</span><span class="muted">${esc(b)}</span></li>`;
 
@@ -70,7 +72,7 @@ export async function teacherCourse(courseId, me) {
     const text = await run('getText', c.docId).catch(() => null);
     dlg.innerHTML = `<h2>${esc(s.name)} · ${esc(w.title)}</h2>
       ${text != null ? `<pre>${esc(text)}</pre>` : ''}
-      <p><a href="${esc(c.link)}" target="_blank" rel="noopener">원본 열기</a></p>
+      ${c.link ? `<p><a href="${esc(c.link)}" target="_blank" rel="noopener">원본 열기</a></p>` : ''}
       <form method="dialog"><button>닫기</button></form>`;
   };
 
