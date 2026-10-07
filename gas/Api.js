@@ -1,51 +1,114 @@
-// Public functions are called from the PWA via the Apps Script API (scripts.run)
-// and run as the calling user, so Classroom enforces who may see or change what.
+// Web app API. Deployed "execute as me (teacher), anyone can access": every call runs with the
+// teacher's Drive and Sheet, and is authorised here by a student device token or the teacher key.
 
-function whoami() {
-  const pick = c => ({ id: c.id, name: c.name, section: c.section || '' });
-  const courses = who => list_(p => Classroom.Courses.list({ [who]: 'me', courseStates: ['ACTIVE'], pageToken: p }), 'courses');
-  let name = '';
-  try { name = Classroom.UserProfiles.get('me').name.fullName; } catch (e) {}
-  return { name: name, teaching: courses('teacherId').map(pick), learning: courses('studentId').map(pick) };
+// Address of the PWA (GitHub Pages). setup() prints the teacher link with it.
+const APP_URL = 'https://goodth777.github.io/classroom-ocr/';
+
+const MAX_PHOTOS_ = 5;
+const PIN_TRIES_ = 5;
+
+function err_(message, code) {
+  const e = new Error(message);
+  e.userMessage = message;
+  e.code = code || 'bad';
+  return e;
 }
 
-function list_(fetchPage, key) {
-  const out = [];
-  let token;
-  do {
-    const res = fetchPage(token);
-    (res[key] || []).forEach(x => out.push(x));
-    token = res.nextPageToken;
-  } while (token);
+const json_ = obj => ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+
+function doPost(e) {
+  try {
+    const req = JSON.parse(e.postData.contents);
+    const route = ROUTES_[req.action];
+    if (!route) throw err_('알 수 없는 요청이에요.');
+    let who = null;
+    if (route.auth === 'student') who = student_(req.token);
+    if (route.auth === 'teacher') teacher_(req.key);
+    return json_({ ok: true, data: route.fn(req, who) });
+  } catch (e2) {
+    if (!e2.userMessage) console.error(e2.stack || e2);
+    return json_({ ok: false, code: e2.code || 'server', error: e2.userMessage || '서버에서 문제가 생겼어요. 잠시 후 다시 시도해 주세요.' });
+  }
+}
+
+// ---------- auth ----------
+
+const hash_ = s => Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s)
+  .map(b => ((b + 256) % 256).toString(16).padStart(2, '0')).join('');
+const randomToken_ = () => (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+
+function teacher_(key) {
+  const real = prop_('TEACHER_KEY');
+  if (!key || !real || hash_(String(key)) !== hash_(real)) throw err_('교사 접속 링크를 다시 열어 주세요.', 'auth');
+}
+
+function student_(token) {
+  if (!token) throw err_('다시 참여해 주세요.', 'auth');
+  const h = hash_(String(token));
+  const dev = rows_('Devices').find(d => d.tokenHash === h);
+  const st = dev && rows_('Students').find(s => s.id === dev.studentId);
+  const cls = st && rows_('Classes').find(c => c.id === st.classId);
+  if (!cls) throw err_('다시 참여해 주세요. 선생님이 PIN을 새로 발급했을 수 있어요.', 'auth');
+  return { student: st, cls: cls };
+}
+
+const classByCode_ = code => rows_('Classes').find(c => c.code === String(code || '').trim().toUpperCase());
+
+// ---------- public ----------
+
+// Step 2 of joining: the class name, and the student's name once a number is chosen.
+function peek_(req) {
+  const cls = classByCode_(req.code);
+  if (!cls) throw err_('수업 코드를 다시 확인해 주세요.', 'notfound');
+  const out = { className: cls.name, section: cls.section };
+  if (req.number != null) {
+    const st = rows_('Students').find(s => s.classId === cls.id && +s.number === +req.number);
+    if (!st) throw err_('명단에 없는 번호예요. 선생님께 확인해 주세요.', 'notfound');
+    out.name = st.name;
+  }
   return out;
 }
 
-const Subs_ = () => Classroom.Courses.CourseWork.StudentSubmissions;
-
-function listMyAssignments() {
-  const courses = list_(p => Classroom.Courses.list({ studentId: 'me', courseStates: ['ACTIVE'], pageToken: p }), 'courses');
-  const cards = [];
-  courses.forEach(c => {
-    const works = list_(p => Classroom.Courses.CourseWork.list(c.id, { courseWorkStates: ['PUBLISHED'], pageToken: p }), 'courseWork')
-      .filter(w => w.associatedWithDeveloper);
-    if (!works.length) return;
-    const mine = {};
-    list_(p => Subs_().list(c.id, '-', { userId: 'me', pageToken: p }), 'studentSubmissions')
-      .forEach(s => { mine[s.courseWorkId] = s; });
-    works.forEach(w => {
-      const s = mine[w.id] || {};
-      cards.push({
-        courseId: c.id, courseName: c.name, section: c.section || '', workId: w.id, title: w.title,
-        description: w.description || '', due: ymd_(w.dueDate), state: s.state || 'NEW', updated: s.updateTime || '',
-      });
-    });
-  });
-  return cards;
+function join_(req) {
+  const cls = classByCode_(req.code);
+  if (!cls) throw err_('수업 코드를 다시 확인해 주세요.', 'notfound');
+  const st = rows_('Students').find(s => s.classId === cls.id && +s.number === +req.number);
+  if (!st) throw err_('명단에 없는 번호예요.', 'notfound');
+  const cache = CacheService.getScriptCache();
+  const k = 'pin:' + st.id;
+  const tries = +(cache.get(k) || 0);
+  if (tries >= PIN_TRIES_) throw err_('PIN을 여러 번 틀렸어요. 10분 뒤에 다시 해 주세요.', 'locked');
+  if (String(req.pin) !== st.pin) {
+    cache.put(k, String(tries + 1), 600);
+    throw err_(`PIN이 맞지 않아요. (${tries + 1}/${PIN_TRIES_})`, 'pin');
+  }
+  cache.remove(k);
+  const token = randomToken_();
+  withLock_(() => append_('Devices', { tokenHash: hash_(token), studentId: st.id, created: now_(), lastSeen: now_() }));
+  return { token: token, student: { name: st.name, number: +st.number }, cls: { name: cls.name, section: cls.section } };
 }
 
-// Drive converts an image to a Google Doc with OCR; we read the text and drop the temp doc.
-function ocr(base64, mimeType) {
-  const blob = Utilities.newBlob(Utilities.base64Decode(base64), mimeType, 'ocr-temp');
+// ---------- student ----------
+
+function me_(req, who) {
+  const mine = {};
+  rows_('Submissions').filter(s => s.studentId === who.student.id).forEach(s => { mine[s.assignmentId] = s; });
+  const assignments = rows_('Assignments').filter(a => a.classId === who.cls.id).map(a => {
+    const s = mine[a.id];
+    return { id: a.id, title: a.title, description: a.description, due: a.due, created: a.created,
+      state: s ? 'TURNED_IN' : 'NEW', updated: s ? s.submittedAt : '', late: !!(s && s.late), text: s ? s.text : '' };
+  });
+  return { student: { name: who.student.name, number: +who.student.number }, cls: { name: who.cls.name, section: who.cls.section }, assignments: assignments };
+}
+
+function ocrAction_(req) {
+  return { text: ocr_(req.image) };
+}
+
+// The one place OCR happens: swap this body to change engines (CLOVA, Cloud Vision, ...).
+// Drive turns the image into a Google Doc with OCR; we read the text and drop the temp doc.
+function ocr_(base64) {
+  const blob = Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg', 'ocr.jpg');
   const file = Drive.Files.create({ name: 'ocr-temp', mimeType: MimeType.GOOGLE_DOCS }, blob, { ocrLanguage: 'ko' });
   try {
     return DocumentApp.openById(file.id).getBody().getText().trim();
@@ -54,86 +117,178 @@ function ocr(base64, mimeType) {
   }
 }
 
-function submit(courseId, workId, title, text, photos) {
-  const sub = (Subs_().list(courseId, workId, { userId: 'me' }).studentSubmissions || [])[0];
-  if (!sub) throw new Error('제출할 과제를 찾을 수 없어요.');
-  const doc = DocumentApp.create(title + ' - 제출');
-  const body = doc.getBody();
-  body.setText(text);
-  (photos || []).forEach(b64 => {
-    const img = body.appendImage(Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', 'photo.jpg'));
-    const w = 450;
-    img.setHeight(Math.round(img.getHeight() * w / img.getWidth())).setWidth(w);
+function folder_(parent, name) {
+  const it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+function submit_(req, who) {
+  const a = rows_('Assignments').find(x => x.id === req.assignmentId && x.classId === who.cls.id);
+  if (!a) throw err_('과제를 찾을 수 없어요.', 'notfound');
+  const text = String(req.text || '').trim();
+  const photos = (req.photos || []).slice(0, MAX_PHOTOS_);
+  if (!text) throw err_('제출할 내용을 입력해 주세요.');
+  // Photos go to Drive before the lock: uploads are the slow part and need no coordination.
+  const dir = folder_(folder_(DriveApp.getFolderById(prop_('FOLDER_ID')), who.cls.name), a.title);
+  const tag = `${who.student.number}_${who.student.name}`;
+  const ids = photos.map((b64, i) => dir.createFile(Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', `${tag}_${i + 1}.jpg`)).getId());
+  const at = now_();
+  const late = isLate(at, a.due);
+  const old = withLock_(() => {
+    const prev = rows_('Submissions').find(s => s.assignmentId === a.id && s.studentId === who.student.id);
+    const row = { id: prev ? prev.id : newId_(), assignmentId: a.id, studentId: who.student.id, text: text, photoIds: ids.join(','), submittedAt: at, late: late ? 'Y' : '' };
+    if (prev) update_('Submissions', prev._row, row); else append_('Submissions', row);
+    return prev;
   });
-  doc.saveAndClose();
-  let reclaimed = false;
-  try {
-    if (sub.state === 'TURNED_IN') { Subs_().reclaim({}, courseId, workId, sub.id); reclaimed = true; }
-    Subs_().modifyAttachments({ addAttachments: [{ driveFile: { id: doc.getId() } }] }, courseId, workId, sub.id);
-    Subs_().turnIn({}, courseId, workId, sub.id);
-  } catch (err) {
-    // Roll back: restore the earlier turned-in state and drop the orphan doc, then surface the real error.
-    if (reclaimed) { try { Subs_().turnIn({}, courseId, workId, sub.id); } catch (e) {} }
-    try { Drive.Files.remove(doc.getId()); } catch (e) {}
-    throw err;
+  if (old && old.photoIds) old.photoIds.split(',').forEach(id => { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} });
+  return { submittedAt: at, late: late };
+}
+
+function leave_(req, who) {
+  const h = hash_(String(req.token));
+  withLock_(() => deleteRows_('Devices', rows_('Devices').filter(d => d.tokenHash === h)));
+  return true;
+}
+
+// ---------- teacher ----------
+
+function classes_() {
+  const students = rows_('Students');
+  const joined = new Set(rows_('Devices').map(d => d.studentId));
+  return rows_('Classes').map(c => {
+    const mine = students.filter(s => s.classId === c.id);
+    return { id: c.id, name: c.name, section: c.section, subject: c.subject, code: c.code,
+      students: mine.length, joined: mine.filter(s => joined.has(s.id)).length };
+  });
+}
+
+function uniqueCode_() {
+  const used = new Set(rows_('Classes').map(c => c.code));
+  let code;
+  do { code = makeCode(); } while (used.has(code));
+  return code;
+}
+
+function createClass_(req) {
+  const name = String(req.name || '').trim();
+  if (!name) throw err_('반 이름을 입력해 주세요.');
+  return withLock_(() => {
+    const c = { id: newId_(), name: name, section: String(req.section || '').trim(), subject: String(req.subject || '').trim(), code: uniqueCode_(), created: now_() };
+    append_('Classes', c);
+    return c;
+  });
+}
+
+function newCode_(req) {
+  return withLock_(() => {
+    const c = rows_('Classes').find(x => x.id === req.classId);
+    if (!c) throw err_('반을 찾을 수 없어요.', 'notfound');
+    c.code = uniqueCode_();
+    update_('Classes', c._row, c);
+    return c.code;
+  });
+}
+
+function roster_(req) {
+  const devices = rows_('Devices');
+  const last = {};
+  rows_('Submissions').forEach(s => { if (!last[s.studentId] || s.submittedAt > last[s.studentId]) last[s.studentId] = s.submittedAt; });
+  return rows_('Students').filter(s => s.classId === req.classId)
+    .map(s => ({ id: s.id, number: +s.number, name: s.name, pin: s.pin, joined: devices.some(d => d.studentId === s.id), lastSubmit: last[s.id] || '' }))
+    .sort((a, b) => a.number - b.number);
+}
+
+function addStudents_(req) {
+  const list = parseRoster(req.text);
+  if (!list.length) throw err_('번호와 이름을 읽지 못했어요. "1  홍길동"처럼 한 줄에 한 명씩 붙여 넣어 주세요.');
+  const added = withLock_(() => {
+    const have = new Set(rows_('Students').filter(s => s.classId === req.classId).map(s => +s.number));
+    const fresh = list.filter(s => !have.has(s.number));
+    fresh.forEach(s => append_('Students', { id: newId_(), classId: req.classId, number: s.number, name: s.name, pin: makePin(), created: now_() }));
+    return fresh.length;
+  });
+  return { added: added, skipped: list.length - added, roster: roster_(req) };
+}
+
+function reissuePin_(req) {
+  return withLock_(() => {
+    const s = rows_('Students').find(x => x.id === req.studentId);
+    if (!s) throw err_('학생을 찾을 수 없어요.', 'notfound');
+    s.pin = makePin();
+    update_('Students', s._row, s);
+    deleteRows_('Devices', rows_('Devices').filter(d => d.studentId === s.id)); // old devices must join again
+    return s.pin;
+  });
+}
+
+function grid_(req) {
+  const students = rows_('Students').filter(s => s.classId === req.classId);
+  const assignments = rows_('Assignments').filter(a => a.classId === req.classId);
+  const ids = new Set(assignments.map(a => a.id));
+  const subs = rows_('Submissions').filter(s => ids.has(s.assignmentId)).map(s => Object.assign({}, s, { late: s.late === 'Y' }));
+  return buildGrid(students, assignments, subs);
+}
+
+function photos_(req) {
+  const s = rows_('Submissions').find(x => x.id === req.subId);
+  if (!s || !s.photoIds) return [];
+  return s.photoIds.split(',').map(id => {
+    try {
+      const b = DriveApp.getFileById(id).getBlob();
+      return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
+    } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
+function createAssignment_(req) {
+  const title = String(req.title || '').trim();
+  if (!title) throw err_('과제 제목을 입력해 주세요.');
+  if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('반을 찾을 수 없어요.', 'notfound');
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(req.due || '') ? req.due : '';
+  return withLock_(() => {
+    const a = { id: newId_(), classId: req.classId, title: title, description: String(req.description || '').trim(), due: due, created: now_() };
+    append_('Assignments', a);
+    return a.id;
+  });
+}
+
+const sheetUrl_ = () => db_().getUrl();
+
+const ROUTES_ = {
+  peek: { auth: 'none', fn: peek_ },
+  join: { auth: 'none', fn: join_ },
+  me: { auth: 'student', fn: me_ },
+  ocr: { auth: 'student', fn: ocrAction_ },
+  submit: { auth: 'student', fn: submit_ },
+  leave: { auth: 'student', fn: leave_ },
+  classes: { auth: 'teacher', fn: classes_ },
+  createClass: { auth: 'teacher', fn: createClass_ },
+  newCode: { auth: 'teacher', fn: newCode_ },
+  roster: { auth: 'teacher', fn: roster_ },
+  addStudents: { auth: 'teacher', fn: addStudents_ },
+  reissuePin: { auth: 'teacher', fn: reissuePin_ },
+  grid: { auth: 'teacher', fn: grid_ },
+  photos: { auth: 'teacher', fn: photos_ },
+  createAssignment: { auth: 'teacher', fn: createAssignment_ },
+  sheetUrl: { auth: 'teacher', fn: sheetUrl_ },
+};
+
+// ---------- one-time setup (run from the Apps Script editor) ----------
+
+function setup() {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperty('DB_ID')) {
+    const ss = SpreadsheetApp.create('과제 제출 DB');
+    Object.keys(HEADERS_).forEach((name, i) => {
+      const sh = i === 0 ? ss.getSheets()[0].setName(name) : ss.insertSheet(name);
+      sh.getRange('A:Z').setNumberFormat('@'); // keep PINs like 0123 and dates as plain text
+      sh.appendRow(HEADERS_[name]);
+      sh.setFrozenRows(1);
+    });
+    p.setProperty('DB_ID', ss.getId());
   }
-  return { state: 'TURNED_IN', docId: doc.getId() };
-}
-
-// Created here (not in Classroom) so students can attach submissions through this app.
-// due is 'YYYY-MM-DD'; 23:59 in Korea is 14:59 UTC on the same date.
-function createAssignment(courseId, title, description, due) {
-  const work = { title: title, description: description || '', workType: 'ASSIGNMENT', state: 'PUBLISHED' };
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(due || '');
-  if (m) {
-    work.dueDate = { year: +m[1], month: +m[2], day: +m[3] };
-    work.dueTime = { hours: 14, minutes: 59 };
-  }
-  return Classroom.Courses.CourseWork.create(work, courseId).id;
-}
-
-function getGrid(courseId) {
-  return buildGrid(
-    list_(p => Classroom.Courses.Students.list(courseId, { pageToken: p }), 'students'),
-    list_(p => Classroom.Courses.CourseWork.list(courseId, { pageToken: p }), 'courseWork'),
-    list_(p => Subs_().list(courseId, '-', { pageToken: p }), 'studentSubmissions'));
-}
-
-function getText(docId) {
-  try {
-    return DocumentApp.openById(docId).getBody().getText();
-  } catch (e) {
-    return null;
-  }
-}
-
-// Text plus the photos embedded by submit(), for the teacher's detail panel.
-function getSubmission(docId) {
-  try {
-    const body = DocumentApp.openById(docId).getBody();
-    return {
-      text: body.getText(),
-      photos: body.getImages().map(img => {
-        const b = img.getBlob();
-        return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
-      }),
-    };
-  } catch (e) {
-    return { text: null, photos: [] };
-  }
-}
-
-function getTexts(docIds) {
-  return docIds.map(id => (id ? getText(id) : null));
-}
-
-function devSmoke() {
-  const me = whoami();
-  const out = { teaching: me.teaching.length, learning: me.learning.length };
-  if (me.teaching[0]) {
-    const g = getGrid(me.teaching[0].id);
-    out.grid = { course: me.teaching[0].name, students: g.students.length, works: g.works.length };
-  }
-  Logger.log(JSON.stringify(out));
-  return JSON.stringify(out);
+  if (!p.getProperty('FOLDER_ID')) p.setProperty('FOLDER_ID', DriveApp.createFolder('과제 제출').getId());
+  if (!p.getProperty('TEACHER_KEY')) p.setProperty('TEACHER_KEY', randomToken_());
+  Logger.log('데이터 시트: ' + db_().getUrl());
+  Logger.log('교사 접속 링크 (다른 사람에게 보여 주지 마세요): ' + APP_URL + '#/teacher?key=' + p.getProperty('TEACHER_KEY'));
 }
