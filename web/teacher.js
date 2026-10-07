@@ -1,5 +1,5 @@
 import { run } from './api.js';
-import { render, loading, $ } from './ui.js';
+import { render, loading, $, fail } from './ui.js';
 import { esc, stateLabel, DONE, summarize, toCsv } from './lib.js';
 
 export function teacherHome(me) {
@@ -108,6 +108,10 @@ export async function teacherCourse(courseId, me) {
       alert(err.message);
       return;
     }
-    await teacherCourse(courseId, me);
+    try {
+      await teacherCourse(courseId, me);
+    } catch (err) {
+      fail(err);
+    }
   };
 }
