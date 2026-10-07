@@ -61,9 +61,17 @@ function submit(courseId, workId, title, text, photos) {
     img.setHeight(Math.round(img.getHeight() * w / img.getWidth())).setWidth(w);
   });
   doc.saveAndClose();
-  if (sub.state === 'TURNED_IN') Subs_().reclaim({}, courseId, workId, sub.id);
-  Subs_().modifyAttachments({ addAttachments: [{ driveFile: { id: doc.getId() } }] }, courseId, workId, sub.id);
-  Subs_().turnIn({}, courseId, workId, sub.id);
+  let reclaimed = false;
+  try {
+    if (sub.state === 'TURNED_IN') { Subs_().reclaim({}, courseId, workId, sub.id); reclaimed = true; }
+    Subs_().modifyAttachments({ addAttachments: [{ driveFile: { id: doc.getId() } }] }, courseId, workId, sub.id);
+    Subs_().turnIn({}, courseId, workId, sub.id);
+  } catch (err) {
+    // Roll back: restore the earlier turned-in state and drop the orphan doc, then surface the real error.
+    if (reclaimed) { try { Subs_().turnIn({}, courseId, workId, sub.id); } catch (e) {} }
+    try { Drive.Files.remove(doc.getId()); } catch (e) {}
+    throw err;
+  }
   return { state: 'TURNED_IN', docId: doc.getId() };
 }
 
