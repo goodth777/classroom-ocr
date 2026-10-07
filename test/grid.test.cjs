@@ -9,7 +9,7 @@ test('buildGrid maps submissions into student x work cells', () => {
       { userId: 's1', profile: { name: { fullName: '김철수' } } },
     ],
     [
-      { id: 'w2', title: 'B', creationTime: '2026-10-02T00:00:00Z', associatedWithDeveloper: true },
+      { id: 'w2', title: 'B', creationTime: '2026-10-02T00:00:00Z', associatedWithDeveloper: true, alternateLink: 'W2' },
       { id: 'w1', title: 'A', creationTime: '2026-10-01T00:00:00Z' },
     ],
     [
@@ -26,6 +26,7 @@ test('buildGrid maps submissions into student x work cells', () => {
   );
   assert.deepStrictEqual(g.students.map(s => s.name), ['김철수', '홍길동']);
   assert.deepStrictEqual(g.works.map(w => [w.id, w.app]), [['w1', false], ['w2', true]]);
+  assert.deepStrictEqual(g.works.map(w => w.link), ['', 'W2']);
   assert.deepStrictEqual(g.cells.s1.w2, { state: 'TURNED_IN', late: false, updated: '2026-10-03T00:00:00Z', docId: 'd1', link: 'L' });
   assert.deepStrictEqual(g.cells.s2.w1, { state: 'CREATED', late: false, updated: '', docId: null, link: '' });
 });

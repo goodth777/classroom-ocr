@@ -17,7 +17,7 @@ function buildGrid(students, works, subs) {
       .map(s => ({ id: s.userId, name: s.profile.name.fullName }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     works: works
-      .map(w => ({ id: w.id, title: w.title, app: !!w.associatedWithDeveloper, created: w.creationTime }))
+      .map(w => ({ id: w.id, title: w.title, app: !!w.associatedWithDeveloper, created: w.creationTime, link: w.alternateLink || '' }))
       .sort((a, b) => a.created.localeCompare(b.created)),
     cells,
   };

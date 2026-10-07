@@ -39,7 +39,7 @@ export async function teacherCourse(courseId, me) {
       <div class="card wide">
         <div class="grid-head"><h2>학생별 과제</h2><button id="csv">CSV 내려받기</button></div>
         <div class="table-wrap"><table>
-          <thead><tr><th>학생</th>${grid.works.map(w => `<th>${esc(w.title)}${w.app ? '' : '<span class="tag">클래스룸</span>'}</th>`).join('')}</tr></thead>
+          <thead><tr><th>학생</th>${grid.works.map(w => `<th>${w.link ? `<a href="${esc(w.link)}" target="_blank" rel="noopener">${esc(w.title)}</a>` : esc(w.title)}${w.app ? '' : '<span class="tag">클래스룸</span>'}</th>`).join('')}</tr></thead>
           <tbody>${grid.students.map(s => `<tr><td>${esc(s.name)}</td>${grid.works.map(w => {
             const c = cellOf(grid, s.id, w.id);
             const ok = c && DONE.has(c.state);
@@ -103,10 +103,11 @@ export async function teacherCourse(courseId, me) {
     try {
       await run('createAssignment', courseId, f.get('title').trim(), f.get('description').trim());
       $('#newDlg').close();
-      await teacherCourse(courseId, me);
     } catch (err) {
       e.target.querySelector('.primary').disabled = false;
       alert(err.message);
+      return;
     }
+    await teacherCourse(courseId, me);
   };
 }
