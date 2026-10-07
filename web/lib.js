@@ -41,5 +41,5 @@ export function toCsv(grid, texts) {
       ...grid.works.map(w => (texts[s.id] || {})[w.id] ?? stateLabel((grid.cells[s.id] || {})[w.id])),
     ]),
   ];
-  return '﻿' + rows.map(r => r.map(q).join(',')).join('\r\n');
+  return '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n');
 }

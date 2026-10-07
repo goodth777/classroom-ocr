@@ -33,7 +33,7 @@ test('summarize computes rate, missing, recent', () => {
 
 test('toCsv writes BOM, quotes, and falls back to state label', () => {
   const csv = toCsv(grid, { s1: { w1: '첫 줄\n둘째 "줄"' } });
-  assert.ok(csv.startsWith('﻿'));
+  assert.ok(csv.startsWith('\uFEFF'));
   const lines = csv.slice(1).split('\r\n');
   assert.strictEqual(lines[0], '"학생","과제1","과제 ""2"""');
   assert.strictEqual(lines[1], '"A","첫 줄\n둘째 ""줄""","제출"');
