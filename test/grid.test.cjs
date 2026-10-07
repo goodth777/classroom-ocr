@@ -9,7 +9,7 @@ test('buildGrid maps submissions into student x work cells', () => {
       { userId: 's1', profile: { name: { fullName: '김철수' } } },
     ],
     [
-      { id: 'w2', title: 'B', creationTime: '2026-10-02T00:00:00Z', associatedWithDeveloper: true, alternateLink: 'W2' },
+      { id: 'w2', title: 'B', creationTime: '2026-10-02T00:00:00Z', associatedWithDeveloper: true, dueDate: { year: 2026, month: 10, day: 9 }, alternateLink: 'W2' },
       { id: 'w1', title: 'A', creationTime: '2026-10-01T00:00:00Z' },
     ],
     [
@@ -29,4 +29,12 @@ test('buildGrid maps submissions into student x work cells', () => {
   assert.deepStrictEqual(g.works.map(w => w.link), ['', 'W2']);
   assert.deepStrictEqual(g.cells.s1.w2, { state: 'TURNED_IN', late: false, updated: '2026-10-03T00:00:00Z', docId: 'd1', link: 'L' });
   assert.deepStrictEqual(g.cells.s2.w1, { state: 'CREATED', late: false, updated: '', docId: null, link: '' });
+});
+
+test('buildGrid carries due dates as YYYY-MM-DD', () => {
+  const g = buildGrid([], [
+    { id: 'w1', title: 'A', creationTime: '2026-10-01T00:00:00Z' },
+    { id: 'w2', title: 'B', creationTime: '2026-10-02T00:00:00Z', dueDate: { year: 2026, month: 3, day: 7 } },
+  ], []);
+  assert.deepStrictEqual(g.works.map(w => w.due), ['', '2026-03-07']);
 });

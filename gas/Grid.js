@@ -1,3 +1,9 @@
+// Classroom dueDate {year, month, day} → 'YYYY-MM-DD' ('' when there is no due date).
+function ymd_(d) {
+  const p = n => String(n).padStart(2, '0');
+  return d && d.year ? `${d.year}-${p(d.month)}-${p(d.day)}` : '';
+}
+
 // Pure: turns raw Classroom lists into the teacher's student x assignment grid.
 function buildGrid(students, works, subs) {
   const cells = {};
@@ -17,10 +23,10 @@ function buildGrid(students, works, subs) {
       .map(s => ({ id: s.userId, name: s.profile.name.fullName }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     works: works
-      .map(w => ({ id: w.id, title: w.title, app: !!w.associatedWithDeveloper, created: w.creationTime, link: w.alternateLink || '' }))
+      .map(w => ({ id: w.id, title: w.title, app: !!w.associatedWithDeveloper, created: w.creationTime, link: w.alternateLink || '', due: ymd_(w.dueDate) }))
       .sort((a, b) => a.created.localeCompare(b.created)),
     cells,
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { buildGrid };
+if (typeof module !== 'undefined') module.exports = { buildGrid, ymd_ };

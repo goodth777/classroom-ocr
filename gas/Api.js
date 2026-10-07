@@ -4,7 +4,9 @@
 function whoami() {
   const pick = c => ({ id: c.id, name: c.name, section: c.section || '' });
   const courses = who => list_(p => Classroom.Courses.list({ [who]: 'me', courseStates: ['ACTIVE'], pageToken: p }), 'courses');
-  return { teaching: courses('teacherId').map(pick), learning: courses('studentId').map(pick) };
+  let name = '';
+  try { name = Classroom.UserProfiles.get('me').name.fullName; } catch (e) {}
+  return { name: name, teaching: courses('teacherId').map(pick), learning: courses('studentId').map(pick) };
 }
 
 function list_(fetchPage, key) {
@@ -29,11 +31,14 @@ function listMyAssignments() {
     if (!works.length) return;
     const mine = {};
     list_(p => Subs_().list(c.id, '-', { userId: 'me', pageToken: p }), 'studentSubmissions')
-      .forEach(s => { mine[s.courseWorkId] = s.state; });
-    works.forEach(w => cards.push({
-      courseId: c.id, courseName: c.name, workId: w.id, title: w.title,
-      description: w.description || '', state: mine[w.id] || 'NEW',
-    }));
+      .forEach(s => { mine[s.courseWorkId] = s; });
+    works.forEach(w => {
+      const s = mine[w.id] || {};
+      cards.push({
+        courseId: c.id, courseName: c.name, section: c.section || '', workId: w.id, title: w.title,
+        description: w.description || '', due: ymd_(w.dueDate), state: s.state || 'NEW', updated: s.updateTime || '',
+      });
+    });
   });
   return cards;
 }
@@ -76,9 +81,15 @@ function submit(courseId, workId, title, text, photos) {
 }
 
 // Created here (not in Classroom) so students can attach submissions through this app.
-function createAssignment(courseId, title, description) {
-  return Classroom.Courses.CourseWork.create(
-    { title: title, description: description || '', workType: 'ASSIGNMENT', state: 'PUBLISHED' }, courseId).id;
+// due is 'YYYY-MM-DD'; 23:59 in Korea is 14:59 UTC on the same date.
+function createAssignment(courseId, title, description, due) {
+  const work = { title: title, description: description || '', workType: 'ASSIGNMENT', state: 'PUBLISHED' };
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(due || '');
+  if (m) {
+    work.dueDate = { year: +m[1], month: +m[2], day: +m[3] };
+    work.dueTime = { hours: 14, minutes: 59 };
+  }
+  return Classroom.Courses.CourseWork.create(work, courseId).id;
 }
 
 function getGrid(courseId) {
@@ -93,6 +104,16 @@ function getText(docId) {
     return DocumentApp.openById(docId).getBody().getText();
   } catch (e) {
     return null;
+  }
+}
+
+// Text plus the photos embedded by submit(), for the teacher's detail panel.
+function getSubmission(docId) {
+  try {
+    const body = DocumentApp.openById(docId).getBody();
+    return { text: body.getText(), photos: body.getImages().map(img => Utilities.base64Encode(img.getBlob().getBytes())) };
+  } catch (e) {
+    return { text: null, photos: [] };
   }
 }
 
