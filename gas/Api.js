@@ -111,7 +111,13 @@ function getText(docId) {
 function getSubmission(docId) {
   try {
     const body = DocumentApp.openById(docId).getBody();
-    return { text: body.getText(), photos: body.getImages().map(img => Utilities.base64Encode(img.getBlob().getBytes())) };
+    return {
+      text: body.getText(),
+      photos: body.getImages().map(img => {
+        const b = img.getBlob();
+        return 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes());
+      }),
+    };
   } catch (e) {
     return { text: null, photos: [] };
   }
