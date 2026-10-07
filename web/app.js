@@ -8,9 +8,9 @@ let me = null;
 try { if (hasToken()) me = JSON.parse(localStorage.getItem('me') || 'null'); } catch {}
 
 function login() {
-  render(`<section class="center"><div class="card hero">
-    <h1>과제 제출</h1><p class="muted">학교 구글 계정으로 시작해요</p>
-    <button id="login" class="primary">로그인</button></div></section>`);
+  render(`<section class="center"><div class="hero-card">
+    <div class="logo"></div><h1>과제 제출</h1><p class="muted">학교 구글 계정으로 시작해요</p>
+    <button id="login" class="btn primary">구글 계정으로 로그인</button></div></section>`);
   $('#login').onclick = async () => {
     try {
       await getToken();
@@ -28,7 +28,7 @@ async function route() {
   try {
     if (view === 'a') return await studentEditor(a, b);
     if (view === 't') return await teacherCourse(a, me);
-    return me.teaching.length ? teacherHome(me) : await studentHome();
+    return me.teaching.length ? teacherHome(me) : await studentHome(me);
   } catch (e) { fail(e); }
 }
 
