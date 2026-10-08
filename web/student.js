@@ -2,6 +2,7 @@ import { call } from './api.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
 import { esc, dDay, dueLabel } from './lib.js';
+import * as outbox from './outbox.js';
 
 let me = null;
 
@@ -14,6 +15,50 @@ const shortDate = iso => {
 };
 const isDone = a => a.state === 'TURNED_IN';
 
+// What the student should see, folding in submissions still waiting in the outbox.
+function stateOf(a) {
+  const q = outbox.forAssignment(a.id);
+  if (q) return q.status === 'fail' ? 'fail' : 'sending';
+  return isDone(a) ? 'done' : 'todo';
+}
+const attach = q => `글 1개${q.photos.length ? ` · 사진 ${q.photos.length}장` : ''}`;
+const hm = iso => { const d = new Date(iso); return `${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+// The card on the "제출했어요" screen follows its outbox item: sending → delivered / failed.
+function paintSend(item, state, extra = {}) {
+  const el = document.getElementById('sendcard');
+  if (!el || el.dataset.id !== item.id) return;
+  if (state === 'ok') {
+    el.innerHTML = `<div class="r"><div class="okdot">✓</div>선생님께 전달됐어요<small>${esc(hm(extra.result.submittedAt))}${extra.result.late ? ' · 마감 후' : ''}</small></div>
+      <div class="bar"><i style="width:100%"></i></div><div class="note">${esc(attach(item))}</div>`;
+  } else if (state === 'fail') {
+    el.innerHTML = `<div class="r bad">⚠️ 보내지 못했어요<small>${esc(attach(item))}</small></div>
+      <div class="note">${esc(extra.error || '')} 글과 사진은 이 휴대폰에 그대로 있어요.</div>
+      <button class="retrybtn" data-retry="${esc(item.id)}"><span>다시 보내기</span><span>↻</span></button>`;
+  } else {
+    el.innerHTML = `<div class="r"><div class="spin"></div>선생님께 보내는 중<small>${esc(attach(item))}</small></div>
+      <div class="bar"><i class="indet"></i></div><div class="note">지금 바로 다른 화면으로 가도 괜찮아요.</div>`;
+  }
+}
+
+addEventListener('outbox', e => {
+  const { item, state, result, error } = e.detail;
+  if (state === 'ok') {
+    me = me || store.cache('me');
+    const a = me && me.assignments.find(x => x.id === item.assignmentId);
+    if (a) {
+      Object.assign(a, { state: 'TURNED_IN', updated: result.submittedAt, late: result.late, text: item.text });
+      store.setCache('me', me);
+    }
+    if (navigator.vibrate) navigator.vibrate(60);
+    toast(`"${item.title}" 제출이 선생님께 전달됐어요 ✓`);
+  } else if (state === 'fail') {
+    toast(`"${item.title}" 제출을 보내지 못했어요. 다시 보내기를 눌러 주세요`);
+  }
+  paintSend(item, state, { result, error });
+  if (document.querySelector('.hello') && !document.querySelector('dialog[open]')) renderHome();
+});
+
 // Fetch the latest "me"; returns true when it differs from what is on screen.
 async function refreshMe() {
   const data = await call('me');
@@ -24,14 +69,25 @@ async function refreshMe() {
 }
 
 function taskCard(a) {
-  const done = isDone(a);
-  const overdue = !done && dDay(a.due) < 0;
-  return `<a class="task ${done ? 'done' : ''}" href="#/a/${a.id}">
-    <div class="row"><span class="chip">${esc(me.cls.name)}</span>
-      <span class="pill ${done ? 'ok' : ''}">${done ? (a.late ? '늦게 제출' : '제출 완료') : overdue ? '마감 지남' : '미제출'}</span></div>
+  const k = stateOf(a);
+  const q = outbox.forAssignment(a.id);
+  const overdue = k === 'todo' && dDay(a.due) < 0;
+  const pill = {
+    done: `<span class="pill ok">${a.late ? '늦게 제출' : '제출 완료'}</span>`,
+    sending: '<span class="pill sending">보내는 중</span>',
+    fail: '<span class="pill fail">전송 실패</span>',
+    todo: `<span class="pill">${overdue ? '마감 지남' : '미제출'}</span>`,
+  }[k];
+  const meta = k === 'done' ? `${shortDate(a.updated)} 제출`
+    : k === 'sending' ? `방금 제출 · ${attach(q)}`
+    : k === 'fail' ? `${attach(q)}은 이 휴대폰에 있어요`
+    : a.due ? `🗓 ${dueLabel(a.due)} 마감` : '마감일 없음';
+  const tail = k === 'todo' ? '<div class="cta"><span>촬영해서 제출하기</span><span>→</span></div>'
+    : k === 'fail' ? `<button class="retrybtn" data-retry="${esc(q.id)}"><span>다시 보내기</span><span>↻</span></button>` : '';
+  return `<a class="task ${k === 'done' || k === 'sending' ? 'done' : ''} ${k === 'sending' ? 'sendingc' : ''} ${k === 'fail' ? 'failc' : ''}" href="#/a/${a.id}">
+    <div class="row"><span class="chip">${esc(me.cls.name)}</span>${pill}</div>
     <h4>${esc(a.title)}</h4>
-    <div class="meta">${done ? `${shortDate(a.updated)} 제출` : a.due ? `🗓 ${dueLabel(a.due)} 마감` : '마감일 없음'}</div>
-    ${done ? '' : '<div class="cta"><span>촬영해서 제출하기</span><span>→</span></div>'}
+    <div class="meta">${esc(meta)}</div>${tail}
   </a>`;
 }
 
@@ -53,8 +109,16 @@ export async function studentHome() {
 
 function renderHome() {
   const list = me.assignments;
-  const pending = list.filter(a => !isDone(a)).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
-  const done = list.filter(isDone).sort((a, b) => b.updated.localeCompare(a.updated));
+  const pending = list.filter(a => ['todo', 'fail'].includes(stateOf(a))).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
+  const done = list.filter(a => ['done', 'sending'].includes(stateOf(a)))
+    .sort((a, b) => (stateOf(b) === 'sending') - (stateOf(a) === 'sending') || (b.updated || '').localeCompare(a.updated || ''));
+  const queued = outbox.list();
+  const fails = queued.filter(q => q.status === 'fail').length;
+  const sends = queued.length - fails;
+  const resumed = queued.some(q => q.resumed && q.status === 'sending');
+  const banner = fails
+    ? `<div class="banner fail">⚠️ <span><b>${fails}건</b>을 보내지 못했어요. 인터넷을 확인해 주세요.</span><button class="act" data-retryall>다시 보내기</button></div>`
+    : sends ? `<div class="banner sending"><div class="spin"></div><span>${resumed ? '지난번에 다 못 보낸 ' : ''}<b>${sends}건</b>을 ${resumed ? '이어서 보내고 있어요' : '선생님께 보내는 중이에요'}</span></div>` : '';
   const next = pending.find(a => a.due && dDay(a.due) >= 0);
   const pct = list.length ? Math.round((done.length / list.length) * 100) : 0;
   const name = me.student.name;
@@ -63,6 +127,7 @@ function renderHome() {
       <div><small>${esc([me.cls.section, me.cls.name].filter(Boolean).join(' · '))}</small><strong>안녕하세요, ${esc(firstName(name))}님</strong></div>
       <button class="av" id="profile" aria-label="내 정보">${esc(name.slice(-2))}</button>
     </header>
+    ${banner}
     <section class="s-bento">
       <div class="tile hero"><div class="k">제출 현황</div>
         <div class="ring" style="--p:${pct}"><span>${done.length}/${list.length}</span></div>
@@ -83,6 +148,15 @@ function renderHome() {
     </dialog>`);
 
   $('#profile').onclick = () => $('#menu').showModal();
+  document.getElementById('app').onclick = e => {
+    const one = e.target.closest('[data-retry]');
+    const all = e.target.closest('[data-retryall]');
+    if ((!one && !all) || !document.querySelector('.hello')) return; // home only; the editor has its own handler
+    e.preventDefault();
+    if (one) outbox.retry(one.dataset.retry);
+    else outbox.list().filter(q => q.status === 'fail').forEach(q => outbox.retry(q.id));
+    renderHome();
+  };
   $('#leave').onclick = async () => {
     $('#leave').disabled = true;
     try { await call('leave', { token: store.token() }); } catch {} // leaving locally is enough if the server is unreachable
@@ -153,22 +227,12 @@ export async function studentEditor(id) {
           <div class="ghosts" id="ghosts" hidden aria-hidden="true"><span style="width:92%"></span><span style="width:78%"></span><span style="width:85%"></span></div>
         </div>
       </section>
-      <section class="v-error">
-        <div class="err-ic">📡</div><h2>연결이 잠시 끊겼어요</h2>
-        <p>와이파이나 데이터를 확인한 뒤<br>다시 시도해 주세요.</p>
-        <div class="keep" id="keep"></div>
-      </section>
       <section class="v-done">
         <div class="chk"><span>✓</span></div>
         <h2>제출했어요!</h2>
-        <p>선생님께 바로 전달됐어요.<br>마감 전까지 다시 제출할 수 있어요.</p>
-        <div class="receipt" id="receipt"></div>
+        <p>선생님께 보내는 중이에요.<br>앱을 닫아도 다음에 열면 이어서 보내요.</p>
+        <div class="sendcard" id="sendcard"></div>
       </section>
-    </div>
-    <div class="overlay" id="sending" hidden>
-      <div class="orb" id="orb"><span id="pct">0%</span></div>
-      <h2>제출하고 있어요</h2><p>선생님께 보내는 중이에요.<br>잠깐이면 돼요.</p>
-      <div class="steps-list" id="sSteps"></div>
     </div>
     <div class="dock" id="dock"></div>
     <dialog class="phdlg" id="phDlg"><img id="phBig" alt="촬영한 사진"><form method="dialog"><button class="btn">닫기</button></form></dialog>
@@ -182,7 +246,6 @@ export async function studentEditor(id) {
     edit: () => `${st.photos.length < MAX_PHOTOS ? `<label class="sec" aria-label="한 장 더 촬영">${fileInput}📷</label>` : ''}${pending()
       ? '<div class="main dim">사진을 다 읽으면 제출할 수 있어요</div>'
       : `<button class="main" id="submit">${isDone(a) ? '다시 제출하기' : '제출하기'}</button>`}`,
-    error: () => '<button class="main" id="retry">다시 시도</button>',
     done: () => '<a class="main" href="#/home">내 과제로 돌아가기</a>',
   };
 
@@ -190,8 +253,9 @@ export async function studentEditor(id) {
     st.view = view;
     $('#ed').dataset.state = view;
     $('#dock').innerHTML = DOCK[view]();
-    $('#pill').textContent = isDone(a) ? '제출 완료' : '미제출';
-    $('#pill').className = 'pill' + (isDone(a) ? ' ok' : '');
+    const k = stateOf(a);
+    $('#pill').textContent = { done: '제출 완료', sending: '보내는 중', fail: '전송 실패', todo: '미제출' }[k];
+    $('#pill').className = 'pill ' + { done: 'ok', sending: 'sending', fail: 'fail', todo: '' }[k];
     if (view === 'edit') paintEdit();
   }
 
@@ -295,49 +359,18 @@ export async function studentEditor(id) {
     pump();
   }
 
+  // Queue and show "제출했어요" at once; the outbox sends in the background and the card follows it.
   async function send() {
     const body = text.value.trim();
     if (!body) { toast('제출할 내용을 입력해 주세요'); return text.focus(); }
-    const photos = st.photos.filter(p => p.status !== 'cancel');
-    $('#sending').hidden = false;
-    $('#dock').innerHTML = '';
-    const labels = ['글 저장하기', photos.length ? `사진 ${photos.length}장 올리기` : '확인하기', '선생님께 전달하기'];
-    const t0 = Date.now();
-    const est = 2500 + photos.length * 1500;
-    const tick = setInterval(() => {
-      const p = Math.min(92, ((Date.now() - t0) / est) * 92);
-      const k = p < 25 ? 0 : p < 80 ? 1 : 2;
-      $('#orb').style.setProperty('--p', p + '%');
-      $('#pct').textContent = Math.round(p) + '%';
-      $('#sSteps').innerHTML = labels.map((l, i) => stepRow(i < k ? 'done' : i === k ? 'now' : '', l)).join('');
-    }, 120);
-    try {
-      const r = await call('submit', { assignmentId: a.id, text: body, photos: photos.map(p => p.base64) });
-      clearInterval(tick);
-      $('#orb').style.setProperty('--p', '100%');
-      $('#pct').textContent = '100%';
-      store.clearDraft(a.id);
-      Object.assign(a, { state: 'TURNED_IN', updated: r.submittedAt, late: r.late, text: body });
-      store.setCache('me', me); // home shows "제출 완료" instantly, before any refetch
-      const d = new Date(r.submittedAt);
-      $('#receipt').innerHTML = `<div><span>과제</span><b>${esc(a.title)}</b></div>
-        <div><span>제출 시각</span><b>${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}${r.late ? ' (마감 후)' : ''}</b></div>
-        <div><span>첨부</span><b>글 1개${photos.length ? ` · 사진 ${photos.length}장` : ''}</b></div>`;
-      if (navigator.vibrate) navigator.vibrate(60);
-      await new Promise(r2 => setTimeout(r2, 300));
-      $('#sending').hidden = true;
-      show('done');
-    } catch (e) {
-      clearInterval(tick);
-      $('#sending').hidden = true;
-      if (e.code === 'offline') {
-        $('#keep').textContent = `✓ 쓴 글${photos.length ? `과 사진 ${photos.length}장은` : '은'} 이 휴대폰에 그대로 있어요`;
-        show('error');
-      } else {
-        show('edit');
-        toast(e.message);
-      }
-    }
+    const photos = st.photos.filter(p => p.status !== 'cancel').map(p => p.base64);
+    const item = await outbox.enqueue({ assignmentId: a.id, title: a.title, text: body, photos });
+    store.clearDraft(a.id);
+    a.text = body;
+    store.setCache('me', me);
+    $('#sendcard').dataset.id = item.id;
+    paintSend(item, item.status === 'fail' ? 'fail' : 'sending');
+    show('done');
   }
 
   $('#ev').onchange = e => { if (e.target.matches('.photoIn')) addPhoto(e.target); };
@@ -370,7 +403,8 @@ export async function studentEditor(id) {
     } else if (t.closest('#viewPh') && st.photos[st.sel]) {
       $('#phBig').src = st.photos[st.sel].url;
       $('#phDlg').showModal();
-    } else if (t.closest('#submit') || t.closest('#retry')) send();
+    } else if (t.closest('#submit')) send();
+    else if (t.closest('[data-retry]')) outbox.retry(t.closest('[data-retry]').dataset.retry);
   };
   text.oninput = () => store.setDraft(a.id, text.value);
 
