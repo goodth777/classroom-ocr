@@ -1,5 +1,6 @@
 import { call, quiet } from './api.js';
 import { bubbles, bindComposer } from './inbox.js';
+import { fa } from './fa.js';
 import { pushState, enablePush, disablePush } from './push.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
@@ -75,19 +76,19 @@ function draw(v, tab, sub) {
 function shell(classes, cls, tab, students, body, actions) {
   return `<div class="t-layout">
     <aside class="side">
-      <div class="brand"><i></i><span>과제 제출</span></div>
+      <div class="brand"><img src="icons/icon-192.png" alt=""><span><b>과제 제출</b><small>손글씨 OCR</small></span></div>
       <div class="lab">내 반</div>
-      ${classes.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tab}">${esc(c.name)}${c.unread ? `<span class="badge">${c.unread}</span>` : `<small>${esc(c.section)}</small>`}</a>`).join('')}
-      <button class="addclass" id="addClass">＋ 새 반 만들기</button>
-      <div class="me"><div class="av">T</div><div><b>선생님</b><span>개인 구글 계정</span></div></div>
+      ${classes.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tab}">${fa('book-open')}<span class="cn">${esc(c.name)}</span>${c.unread ? `<span class="badge">${c.unread}</span>` : `<small>${esc(c.section)}</small>`}</a>`).join('')}
+      <button class="addclass" id="addClass">${fa('plus')}새 반 만들기</button>
+      <div class="me"><div class="av">${fa('user')}</div><div><b>선생님</b><span>개인 구글 계정</span></div></div>
       ${pcPush()}
-      <button class="sheetlink" id="openSheet">📊 원본 시트 열기</button>
+      <button class="sheetlink" id="openSheet">${fa('table')}원본 시트 열기</button>
     </aside>
     <main class="tmain">
       ${cls ? `<div class="thead">
         <h1>${esc(cls.name)}</h1><span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
-        <nav class="tabs"><a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">학생 명단</a>
-          <a class="${tab === 'msg' ? 'on' : ''}" href="#/t/${cls.id}/msg">💬 메시지${cls.unread ? ` <span class="badge">${cls.unread}</span>` : ''}</a></nav>
+        <nav class="tabs"><a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
+          <a class="${tab === 'msg' ? 'on' : ''}" href="#/t/${cls.id}/msg">${fa('comment-dots')}메시지${cls.unread ? ` <span class="badge">${cls.unread}</span>` : ''}</a></nav>
         <span class="sp"></span>${actions}
       </div>` : ''}
       ${body}
@@ -105,7 +106,7 @@ function shell(classes, cls, tab, students, body, actions) {
 function pcPush() {
   const st = pushState();
   if (st === 'unsupported' || st === 'ios') return '';
-  return `<button class="pcpush" id="pcPush">${st === 'on' ? '🔔 PC 알림 켜짐 <small>끄기</small>' : st === 'denied' ? '🔕 PC 알림 차단됨 <small>브라우저 설정</small>' : '🔔 PC 알림 켜기 <small>학생 메시지</small>'}</button>`;
+  return `<button class="pcpush" id="pcPush">${st === 'on' ? `${fa('bell')}PC 알림 켜짐 <small>끄기</small>` : st === 'denied' ? `${fa('bell-slash')}PC 알림 차단됨 <small>브라우저 설정</small>` : `${fa('bell')}PC 알림 켜기 <small>학생 메시지</small>`}</button>`;
 }
 
 function bindShell() {
@@ -148,7 +149,7 @@ function drawEmpty(v) {
   render(shell(v.classes, null, 'grid', 0, `<section class="center"><div class="hero-card">
     <div class="logo"></div><h1>첫 반을 만들어 주세요</h1>
     <p class="muted">반을 만들고 학생 명단을 붙여 넣으면,<br>학생이 수업 코드와 PIN으로 참여할 수 있어요.</p>
-    <button class="btn primary" id="firstClass">＋ 새 반 만들기</button></div></section>`, ''));
+    <button class="btn primary" id="firstClass">${fa('plus')}새 반 만들기</button></div></section>`, ''));
   bindShell();
   $('#firstClass').onclick = () => $('#classDlg').showModal();
 }
@@ -232,17 +233,17 @@ function drawGrid(v, cls) {
         <div class="ring" style="--p:${sum.rate}"><span>${sum.rate}%</span></div>
         <div><b>전체 제출률</b><p>과제 ${grid.works.length}개 · ${sum.total}건 중 ${sum.done}건 제출${deltaHtml}</p></div>
       </div>
-      <div class="tile"><div class="k">미제출 <span>전체</span></div>
+      <div class="tile"><div class="k"><i class="ti w">${fa('circle-exclamation')}</i>미제출 <span>전체</span></div>
         <div class="big warn">${sum.total - sum.done}<small>건</small></div>
         <ul class="mini">${sum.missing.slice(0, 2).map(m => li(m.name, `${m.miss}건`)).join('')}</ul></div>
-      <div class="tile"><div class="k">최근 제출</div>
+      <div class="tile"><div class="k"><i class="ti b">${fa('clock-rotate-left')}</i>최근 제출</div>
         <ul class="mini">${sum.recent.slice(0, 3).map(r => li(r.student, `${r.work} · ${when(r.updated)}`)).join('') || '<li><span class="muted">아직 없어요</span></li>'}</ul></div>
-      <div class="tile"><div class="k">다음 마감 <span>${next ? esc(next.title) : ''}</span></div>
+      <div class="tile"><div class="k"><i class="ti y">${fa('calendar-check')}</i>다음 마감 <span>${next ? esc(next.title) : ''}</span></div>
         ${next ? `<div class="big">${dDay(next.due) === 0 ? 'D-day' : `D-${dDay(next.due)}`}<small>${esc(dueLabel(next.due))}</small></div>
         <div class="mbar" title="제출 ${ns.done}/${ns.n}"><i style="width:${ns.n ? Math.round(ns.done / ns.n * 100) : 0}%"></i></div>` : '<div class="big">–</div>'}</div>
     </section>
     <div class="toolbar">
-      <input class="search" id="search" type="search" placeholder="🔍 학생 검색" aria-label="학생 검색" value="${esc(query)}">
+      <label class="srch">${fa('magnifying-glass')}<input class="search" id="search" type="search" placeholder="학생 검색" aria-label="학생 검색" value="${esc(query)}"></label>
       <div class="seg2 small" id="sort">${[['num', '번호순'], ['name', '이름순'], ['miss', '미제출 많은 순']].map(([k, t]) => `<button type="button" data-sort="${k}" class="${sortBy === k ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="legend"><span><b class="lg ok">제출</b></span><span><b class="lg late">지각</b></span><span><b class="lg no">미제출</b></span><span>▨ 대상 아님</span></div>
     </div>
@@ -253,9 +254,9 @@ function drawGrid(v, cls) {
           <small>${esc(shortDue(w.due))} · 제출 ${st.done}/${st.n}</small><span class="rate"><i style="width:${st.n ? Math.round(st.done / st.n * 100) : 0}%"></i></span></th>`;
       }).join('')}<th class="sumh">제출</th></tr></thead>
       <tbody id="rows">${rows()}</tbody>
-    </table></div>` : '<section class="gridcard"><p class="empty">아직 낸 과제가 없어요. 오른쪽 위 "＋ 새 과제"로 첫 과제를 내 보세요.</p></section>'}
+    </table></div>` : '<section class="gridcard"><p class="empty">아직 낸 과제가 없어요. 오른쪽 위 "새 과제"로 첫 과제를 내 보세요.</p></section>'}
     <aside class="drawer" id="drawer" aria-label="제출 내용">
-      <div class="dh"><span class="av" id="dAv"></span><div><b id="dTitle"></b><span id="dSub"></span></div><button class="x" data-shut aria-label="닫기">✕</button></div>
+      <div class="dh"><span class="av" id="dAv"></span><div><b id="dTitle"></b><span id="dSub"></span></div><button class="x" data-shut aria-label="닫기">${fa('xmark')}</button></div>
       <div class="photos" id="dPhotos"></div>
       <pre class="txt" id="dText"></pre>
       <div class="acts"><button class="btn" id="dNext">다음 학생 →</button></div>
@@ -278,7 +279,7 @@ function drawGrid(v, cls) {
       <div id="tgtPick"></div>
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="tgtGo">저장</button></div>
     </form></dialog>`;
-  const actions = '<button class="btn" id="csv">⬇ CSV 내려받기</button><button class="btn primary" id="new">＋ 새 과제</button>';
+  const actions = `<button class="btn" id="csv">${fa('download')}CSV 내려받기</button><button class="btn primary" id="new">${fa('plus')}새 과제</button>`;
   render(shell(v.classes, cls, 'grid', grid.students.length, body, actions));
   bindShell();
 
@@ -334,7 +335,7 @@ function drawGrid(v, cls) {
     drawer.classList.remove('open');
     document.querySelectorAll('#rows tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.row === sid));
     $('#spanel').innerHTML = `
-      <div class="dh"><span class="av big2">${s.number}</span><div><b>${esc(s.name)}</b><span>${esc([cls.name, cls.section, s.number + '번'].filter(Boolean).join(' · '))}${r.lastSubmit ? ` · 마지막 제출 ${esc(when(r.lastSubmit))}` : ''}</span></div><button class="x" data-shut aria-label="닫기">✕</button></div>
+      <div class="dh"><span class="av big2">${s.number}</span><div><b>${esc(s.name)}</b><span>${esc([cls.name, cls.section, s.number + '번'].filter(Boolean).join(' · '))}${r.lastSubmit ? ` · 마지막 제출 ${esc(when(r.lastSubmit))}` : ''}</span></div><button class="x" data-shut aria-label="닫기">${fa('xmark')}</button></div>
       <div class="pstats"><div><small>제출</small><b class="a">${doneOf(sid)}</b>/${works.length}</div><div><small>미제출</small><b class="w">${missOf(sid)}</b></div><div><small>지각</small><b>${late}</b></div></div>
       <div class="plist">${works.map(w => {
         const c = cellOf(grid, sid, w.id);
@@ -344,7 +345,7 @@ function drawGrid(v, cls) {
           : `<div class="pitem miss"><div class="r"><b>${esc(w.title)}</b><span class="pill no">미제출</span></div>
               <div class="m">${w.due ? `${esc(dueLabel(w.due))} 마감 · ${dDay(w.due) >= 0 ? `D-${dDay(w.due)}` : '마감 지남'}` : '마감일 없음'}</div></div>`;
       }).join('') || '<p class="muted small">이 학생에게 낸 과제가 없어요.</p>'}</div>
-      <div class="acts"><a class="btn" href="#/t/${cls.id}/msg/${sid}">💬 메시지</a><button class="btn" id="sCsv">⬇ 이 학생 CSV</button><button class="btn" id="sPin">PIN 보기</button></div>`;
+      <div class="acts"><a class="btn" href="#/t/${cls.id}/msg/${sid}">${fa('comment-dots')}메시지</a><button class="btn" id="sCsv">${fa('download')}이 학생 CSV</button><button class="btn" id="sPin">PIN 보기</button></div>`;
     $('#spanel').classList.add('open');
     $('#spanel').querySelector('[data-shut]').onclick = () => { $('#spanel').classList.remove('open'); document.querySelectorAll('#rows tr.sel').forEach(tr => tr.classList.remove('sel')); };
     $('#spanel').querySelector('.plist').onclick = e => { const it = e.target.closest('.pitem[data-w]'); if (it) show(it.dataset.s, it.dataset.w); };
@@ -442,15 +443,15 @@ function drawRoster(v, cls) {
     <section class="r-bento">
       <div class="tile codecard">
         <div><div class="k">수업 코드</div><div class="code">${esc(cls.code)}</div></div>
-        <div class="codeacts"><button id="big">⛶ 크게 보기</button><button id="copy">⧉ 복사</button><button id="regen">↻ 새 코드</button></div>
+        <div class="codeacts"><button id="big">${fa('expand')}크게 보기</button><button id="copy">${fa('copy')}복사</button><button id="regen">${fa('rotate')}새 코드</button></div>
       </div>
-      <div class="tile"><div class="k">참여한 학생</div><div class="big">${joined}<small>/ ${roster.length}명</small></div>
+      <div class="tile"><div class="k"><i class="ti">${fa('circle-check')}</i>참여한 학생</div><div class="big">${joined}<small>/ ${roster.length}명</small></div>
         <div class="mbar"><i style="width:${roster.length ? Math.round(joined / roster.length * 100) : 0}%"></i></div></div>
-      <div class="tile"><div class="k">아직 참여 안 함</div><div class="big warn">${roster.length - joined}<small>명</small></div>
+      <div class="tile"><div class="k"><i class="ti w">${fa('circle-exclamation')}</i>아직 참여 안 함</div><div class="big warn">${roster.length - joined}<small>명</small></div>
         <p class="muted small">${roster.length - joined ? 'PIN 카드를 다시 나눠 주세요' : '모두 참여했어요 🎉'}</p></div>
     </section>
     <section class="gridcard">
-      <div class="gh"><h2>학생 명단</h2><span class="sp"></span><input class="search" id="search" type="search" placeholder="🔍 학생 검색" aria-label="학생 검색"></div>
+      <div class="gh"><h2>학생 명단</h2><span class="sp"></span><label class="srch">${fa('magnifying-glass')}<input class="search" id="search" type="search" placeholder="학생 검색" aria-label="학생 검색"></label></div>
       ${roster.length ? `<div class="table-wrap"><table class="roster">
         <thead><tr><th>번호</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
         <tbody>${roster.map(s => `<tr data-name="${esc(s.name)}" data-id="${s.id}">
@@ -459,7 +460,7 @@ function drawRoster(v, cls) {
           <td><span class="st ${s.joined ? 'ok' : 'wait'}">${s.joined ? '참여함' : '대기'}</span></td>
           <td class="muted">${s.lastSubmit ? when(s.lastSubmit) : '–'}</td>
           <td class="rowacts"><button data-act="show">PIN 보기</button><button data-act="reissue">재발급</button></td></tr>`).join('')}</tbody>
-      </table></div>` : '<p class="empty">아직 학생이 없어요. 오른쪽 위 "＋ 명단 붙여넣기"로 학생을 추가해 주세요.</p>'}
+      </table></div>` : '<p class="empty">아직 학생이 없어요. 오른쪽 위 "명단 붙여넣기"로 학생을 추가해 주세요.</p>'}
     </section>
     <dialog class="sheet" id="pasteDlg"><form id="pasteForm">
       <h3>학생 명단 붙여넣기</h3>
@@ -469,7 +470,7 @@ function drawRoster(v, cls) {
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="pasteGo" disabled>추가하고 PIN 만들기</button></div>
     </form></dialog>
     <div class="board" id="board" hidden>
-      <button class="x" id="boardClose">✕ 닫기 (Esc)</button>
+      <button class="x" id="boardClose">${fa('xmark')}닫기 (Esc)</button>
       <div class="t">${esc([cls.name, cls.section].filter(Boolean).join(' · '))}</div>
       <div class="c">${esc(cls.code)}</div>
       <div class="u">휴대폰에서 앱을 열고 이 코드를 입력하세요</div>
@@ -477,7 +478,7 @@ function drawRoster(v, cls) {
     <div class="print-cards" aria-hidden="true">${roster.map(s => `<div class="pcard"><b>${esc(cls.name)}</b><span>${esc(cls.section)} ${s.number}번 ${esc(s.name)}</span>
       <div class="pk"><small>수업 코드</small>${esc(cls.code)}</div><div class="pk"><small>PIN</small>${esc(s.pin)}</div>
       <p>${esc(location.origin + location.pathname)}</p></div>`).join('')}</div>`;
-  const actions = '<button class="btn" id="print">🖨 PIN 카드 인쇄</button><button class="btn primary" id="paste">＋ 명단 붙여넣기</button>';
+  const actions = `<button class="btn" id="print">${fa('print')}PIN 카드 인쇄</button><button class="btn primary" id="paste">${fa('plus')}명단 붙여넣기</button>`;
   render(shell(v.classes, cls, 'roster', roster.length, body, actions));
   bindShell();
 
@@ -590,7 +591,7 @@ function paintMsg(v, cls) {
   const short = t => (t && t.length > 14 ? t.slice(0, 14) + '…' : t);
   const latestAnn = box && box.anns[0];
   const list = !box ? '<p class="muted small">불러오는 중…</p>' : `
-    <a class="cv ${sel === 'ann' ? 'on' : ''}" href="#/t/${cls.id}/msg/ann"><div class="a ann">📢</div><div class="t">
+    <a class="cv ${sel === 'ann' ? 'on' : ''}" href="#/t/${cls.id}/msg/ann"><div class="a ann">${fa('bullhorn')}</div><div class="t">
       <b>반 공지 <small>${latestAnn ? esc(when(latestAnn.created)) : ''}</small></b>
       <p>${latestAnn ? `${esc(latestAnn.title)} · 읽음 ${latestAnn.read}/${latestAnn.total}` : '아직 공지가 없어요'}</p></div></a>
     ${box.threads.filter(t => !mstate.q || t.name.includes(mstate.q)).map(t => `
@@ -601,13 +602,13 @@ function paintMsg(v, cls) {
 
   let right;
   if (sel === 'ann') {
-    right = `<div class="th"><div class="a ann">📢</div><div><b>반 공지</b><small>${esc([cls.name, cls.section].filter(Boolean).join(' · '))} 학생 ${grid.students.length}명에게</small></div><span class="sp"></span></div>
+    right = `<div class="th"><div class="a ann">${fa('bullhorn')}</div><div><b>반 공지</b><small>${esc([cls.name, cls.section].filter(Boolean).join(' · '))} 학생 ${grid.students.length}명에게</small></div><span class="sp"></span></div>
       <div class="annlist">${(box ? box.anns : []).map(a => `<article class="ann ${a.pinned ? 'pin' : ''}">
-        <div class="h">${a.pinned ? '<span class="tag">📌 고정</span>' : ''}${esc(when(a.created))}<span class="sp"></span>
-          <button class="lk" data-pin="${a.id}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? '고정 해제' : '📌 고정'}</button><button class="lk del" data-del="${a.id}">삭제</button></div>
+        <div class="h">${a.pinned ? `<span class="tag">${fa('thumbtack')}고정</span>` : ''}${esc(when(a.created))}<span class="sp"></span>
+          <button class="lk" data-pin="${a.id}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? '고정 해제' : `${fa('thumbtack')}고정`}</button><button class="lk del" data-del="${a.id}">삭제</button></div>
         <b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}
         <div class="read">읽음 <b>${a.read}/${a.total}</b><span class="rbar"><i style="width:${a.total ? Math.round(a.read / a.total * 100) : 0}%"></i></span>${a.unreadNames.length ? `안 읽음: ${esc(a.unreadNames.join(', '))}` : ''}</div>
-      </article>`).join('') || '<p class="empty">아직 공지가 없어요. 오른쪽 위 "📢 새 공지"로 반 전체에 알릴 수 있어요.</p>'}</div>`;
+      </article>`).join('') || '<p class="empty">아직 공지가 없어요. 오른쪽 위 "새 공지"로 반 전체에 알릴 수 있어요.</p>'}</div>`;
   } else if (sel) {
     const s = grid.students.find(x => x.id === sel) || (box && box.threads.find(t => t.studentId === sel)) || { name: '', number: '' };
     const works = grid.works.filter(w => assigned(w, sel));
@@ -619,22 +620,22 @@ function paintMsg(v, cls) {
       <div class="quick">${QUICK.map(q => `<button type="button" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>
       <form class="comp" id="composer"><textarea id="msg" rows="1" placeholder="${esc(s.name)}에게 메시지… (Enter 보내기 · Shift+Enter 줄바꿈)" aria-label="메시지"></textarea><button class="btn primary">보내기</button></form>`;
   } else {
-    right = '<div class="pickone"><div>💬</div><p>왼쪽에서 학생이나 반 공지를 골라 주세요.<br>학생이 과제 화면에서 질문하면 어떤 과제인지 꼬리표가 붙어 와요.</p></div>';
+    right = `<div class="pickone">${fa('comments')}<p>왼쪽에서 학생이나 반 공지를 골라 주세요.<br>학생이 과제 화면에서 질문하면 어떤 과제인지 꼬리표가 붙어 와요.</p></div>`;
   }
 
   const body = `<div class="inbox ${sel ? 'has-sel' : ''}">
-      <div class="clist"><input class="search" id="msearch" type="search" placeholder="🔍 학생 검색" aria-label="학생 검색" value="${esc(mstate.q)}"><div id="cvs">${list}</div></div>
+      <div class="clist"><label class="srch">${fa('magnifying-glass')}<input class="search" id="msearch" type="search" placeholder="학생 검색" aria-label="학생 검색" value="${esc(mstate.q)}"></label><div id="cvs">${list}</div></div>
       <div class="cpane">${right}</div>
     </div>
     <dialog class="sheet wide" id="annDlg"><form id="annForm">
-      <h3>📢 새 공지 쓰기</h3>
+      <h3>${fa('bullhorn')} 새 공지 쓰기</h3>
       <label>받는 사람<select name="classId">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc([c.name, c.section].filter(Boolean).join(' · '))} 전체 (${c.students}명)</option>`).join('')}</select></label>
       <label>제목<input name="title" required placeholder="예: 내일 수행평가 안내"></label>
       <label>내용<textarea name="body" rows="4" placeholder="학생에게 보일 내용"></textarea></label>
-      <label class="check"><input type="checkbox" name="pinned"> 맨 위에 고정 📌 (학생 홈 화면 맨 위에도 보여요)</label>
+      <label class="check"><input type="checkbox" name="pinned"> 맨 위에 고정 (학생 홈 화면 맨 위에도 보여요)</label>
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="annGo">공지 보내기</button></div>
     </form></dialog>`;
-  const actions = '<button class="btn primary" id="newAnn">📢 새 공지</button>';
+  const actions = `<button class="btn primary" id="newAnn">${fa('bullhorn')}새 공지</button>`;
   const y = $('#cvs') ? $('#cvs').scrollTop : 0;
   render(shell(v.classes, cls, 'msg', grid.students.length, body, actions));
   bindShell();

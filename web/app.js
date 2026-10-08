@@ -38,6 +38,38 @@ async function route() {
 }
 
 addEventListener('hashchange', route);
+
+// Student back button (Android): the app keeps just two history entries — a home "root" and the current screen.
+// In-app links replace the current screen, so back always goes up (chat about an assignment → that assignment,
+// anything else → home), closes an open sheet first, and on home a second press within 2 s leaves the app.
+const parentOf = h => (/^#\/chat\/a\//.test(h) ? h.replace('#/chat/a/', '#/a/') : /^#\/(a|chat|notify)\b/.test(h) ? '#/home' : null);
+let screen = location.hash;
+let lastBack = 0;
+if (!store.key()) {
+  history.replaceState({ root: 1 }, '', '#/home');
+  history.pushState({ guard: 1 }, '', screen && screen !== '#/' ? screen : '#/home');
+  addEventListener('click', e => {
+    const a = e.target.closest('a[href^="#/"]');
+    if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    const href = a.getAttribute('href');
+    if (href === location.hash) return;
+    history.replaceState({ guard: 1 }, '', href);
+    screen = href;
+    route();
+  });
+  addEventListener('popstate', e => {
+    if (!e.state || !e.state.root) return;
+    const open = document.querySelector('dialog[open]');
+    const up = parentOf(screen);
+    if (open) { open.close(); history.pushState({ guard: 1 }, '', screen); return; }
+    if (up) { history.pushState({ guard: 1 }, '', up); screen = up; return; } // hashchange then draws the parent
+    if (Date.now() - lastBack < 2000) return history.back(); // leave the app
+    lastBack = Date.now();
+    history.pushState({ guard: 1 }, '', '#/home');
+    toast('뒤로 버튼을 한 번 더 누르면 앱이 종료돼요');
+  });
+}
 // Load queued submissions first so screens can show "보내는 중", then resume sending them.
 outbox.init().then(() => {
   route();
