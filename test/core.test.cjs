@@ -39,7 +39,7 @@ test('buildGrid shapes rows for the teacher table', () => {
   );
   assert.deepStrictEqual(g.students.map(s => s.name), ['강수아', '김민준']);
   assert.deepStrictEqual(g.works.map(w => [w.id, w.due]), [['a1', ''], ['a2', '2026-10-09']]);
-  assert.deepStrictEqual(g.cells.s1.a2, { state: 'TURNED_IN', late: true, updated: '2026-10-10T01:00:00Z', subId: 'x', text: '글', photos: 2 });
+  assert.deepStrictEqual(g.cells.s1.a2, { state: 'TURNED_IN', late: true, updated: '2026-10-10T01:00:00Z', subId: 'x', preview: '글', photos: 2 });
   assert.strictEqual(g.cells.s2, undefined);
 });
 

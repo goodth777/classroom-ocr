@@ -43,6 +43,8 @@ function isTarget(a, studentId) {
   return !t || t.indexOf(studentId) >= 0;
 }
 
+const PREVIEW_CHARS = 60;
+
 // Teacher table: students by number, assignments by creation, one cell per submission.
 function buildGrid(students, assignments, submissions) {
   const cells = {};
@@ -52,7 +54,9 @@ function buildGrid(students, assignments, submissions) {
       late: !!s.late,
       updated: s.submittedAt,
       subId: s.id,
-      text: s.text,
+      // Only the start of the text: full texts come from the "texts" route when a cell or CSV needs them,
+      // so the teacher view stays small as submissions pile up over the semester.
+      preview: String(s.text || '').slice(0, PREVIEW_CHARS),
       photos: s.photoIds ? String(s.photoIds).split(',').length : 0,
     };
   });

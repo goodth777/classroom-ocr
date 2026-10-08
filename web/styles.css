@@ -739,3 +739,5 @@ button.pitem:hover { border-color: var(--deep-line); }
 .rowacts button:hover { background: var(--chip); }
 .inbox { grid-template-columns: 330px minmax(0, 1fr); }
 @media (max-width: 720px) { .inbox { grid-template-columns: minmax(0, 1fr); } }
+
+.txt.loading::after { content: " …전체 글을 불러오는 중"; color: var(--muted); }

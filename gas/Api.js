@@ -259,6 +259,16 @@ function grid_(req) {
   return buildGrid(students, assignments, subs);
 }
 
+// Full submission texts by submission id, for one student or a whole class (drawer, CSV).
+function texts_(req) {
+  const ids = new Set(rows_('Assignments').filter(a => a.classId === req.classId).map(a => a.id));
+  const out = {};
+  rows_('Submissions').forEach(s => {
+    if (ids.has(s.assignmentId) && (!req.studentId || s.studentId === req.studentId)) out[s.id] = s.text;
+  });
+  return out;
+}
+
 function photos_(req) {
   const s = rows_('Submissions').find(x => x.id === req.subId);
   if (!s || !s.photoIds) return [];
@@ -308,7 +318,7 @@ function updateTargets_(req) {
 
 // Everything the teacher screen needs for one class, in a single round trip.
 function view_(req) {
-  return cached_(`view:${req.classId || ''}:${verOf_('all')}`, () => computeView_(req));
+  return cached_(`view2:${req.classId || ''}:${verOf_('all')}`, () => computeView_(req));
 }
 
 function computeView_(req) {
@@ -335,6 +345,7 @@ function routes_() { return {
   reissuePin: { auth: 'teacher', fn: reissuePin_ },
   grid: { auth: 'teacher', fn: grid_ },
   photos: { auth: 'teacher', fn: photos_ },
+  texts: { auth: 'teacher', fn: texts_ },
   createAssignment: { auth: 'teacher', fn: createAssignment_ },
   updateTargets: { auth: 'teacher', fn: updateTargets_ },
   view: { auth: 'teacher', fn: view_ },

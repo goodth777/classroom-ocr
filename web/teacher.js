@@ -20,6 +20,25 @@ const shortDue = due => (due ? `${+due.slice(5, 7)}.${+due.slice(8)} 마감` : '
 const weekLater = () => new Date(Date.now() + 9 * 36e5 + 7 * 864e5).toISOString().slice(0, 10);
 const cellOf = (grid, sid, wid) => (grid.cells[sid] || {})[wid];
 
+// Full submission texts, fetched on demand (the grid only carries a short preview). Keyed by submission id.
+const fullText = new Map();
+async function loadTexts(classId, studentId) {
+  Object.entries(await call('texts', { classId, studentId })).forEach(([id, t]) => fullText.set(id, t));
+}
+// CSV needs {studentId: {workId: text}}.
+async function csvTexts(grid, classId, studentId) {
+  await loadTexts(classId, studentId);
+  const texts = {};
+  grid.students.forEach(s => grid.works.forEach(w => { const c = cellOf(grid, s.id, w.id); if (c && fullText.has(c.subId)) (texts[s.id] ??= {})[w.id] = fullText.get(c.subId); }));
+  return texts;
+}
+async function busyBtn(btn, label, work) {
+  const old = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = label;
+  try { await work(); } catch (e) { toast(e.message); } finally { btn.disabled = false; btn.innerHTML = old; }
+}
+
 function download(name, text) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
@@ -312,12 +331,21 @@ function drawGrid(v, cls) {
     $('#dAv').textContent = s.number;
     $('#dTitle').textContent = `${s.name} · ${w.title}`;
     $('#dSub').textContent = `${stamp(c.updated)} 제출${c.late ? ' · 지각' : ''}${c.photos ? ` · 사진 ${c.photos}장` : ''}`;
-    $('#dText').textContent = c.text;
+    const known = fullText.get(c.subId);
+    $('#dText').textContent = known ?? c.preview;
+    $('#dText').classList.toggle('loading', known == null);
     $('#dPhotos').innerHTML = c.photos ? '<div class="sk" style="width:130px;height:170px;flex:none"></div>'.repeat(c.photos) : '';
     $('#dNext').disabled = !nextWith(sid, wid);
     drawer.classList.add('open');
-    if (!c.photos) return;
     const my = ++token;
+    if (known == null) {
+      loadTexts(cls.id, sid).then(() => {
+        if (my !== token || !drawer.isConnected) return;
+        $('#dText').textContent = fullText.get(c.subId) ?? c.preview;
+        $('#dText').classList.remove('loading');
+      }).catch(() => { if (my === token) $('#dText').classList.remove('loading'); });
+    }
+    if (!c.photos) return;
     const photos = await call('photos', { subId: c.subId }).catch(() => []);
     if (my !== token || !drawer.isConnected) return;
     $('#dPhotos').innerHTML = photos.filter(p => p.startsWith('data:image/')).map((p, i) => `<img src="${esc(p)}" alt="제출 사진 ${i + 1}">`).join('')
@@ -342,7 +370,7 @@ function drawGrid(v, cls) {
         const c = cellOf(grid, sid, w.id);
         return c
           ? `<button class="pitem" data-s="${sid}" data-w="${w.id}"><div class="r"><b>${esc(w.title)}</b><span class="pill ${c.late ? 'late' : 'ok'}">${c.late ? '지각' : '제출'}</span></div>
-              <div class="m">${esc(stamp(c.updated))} 제출${c.photos ? ` · 사진 ${c.photos}장` : ''}</div><p>${esc(c.text)}</p></button>`
+              <div class="m">${esc(stamp(c.updated))} 제출${c.photos ? ` · 사진 ${c.photos}장` : ''}</div><p>${esc(c.preview)}</p></button>`
           : `<div class="pitem miss"><div class="r"><b>${esc(w.title)}</b><span class="pill no">미제출</span></div>
               <div class="m">${w.due ? `${esc(dueLabel(w.due))} 마감 · ${dDay(w.due) >= 0 ? `D-${dDay(w.due)}` : '마감 지남'}` : '마감일 없음'}</div></div>`;
       }).join('') || '<p class="muted small">이 학생에게 낸 과제가 없어요.</p>'}</div>
@@ -351,11 +379,10 @@ function drawGrid(v, cls) {
     $('#spanel').querySelector('[data-shut]').onclick = () => { $('#spanel').classList.remove('open'); document.querySelectorAll('#rows tr.sel').forEach(tr => tr.classList.remove('sel')); };
     $('#spanel').querySelector('.plist').onclick = e => { const it = e.target.closest('.pitem[data-w]'); if (it) show(it.dataset.s, it.dataset.w); };
     $('#sPin').onclick = () => toast(r.pin ? `${s.name} 학생의 PIN은 ${r.pin}예요` : 'PIN을 불러오지 못했어요');
-    $('#sCsv').onclick = () => {
+    $('#sCsv').onclick = () => busyBtn($('#sCsv'), '내려받는 중…', async () => {
       const one = { students: [s], works, cells: { [sid]: grid.cells[sid] || {} } };
-      const texts = { [sid]: Object.fromEntries(works.map(w => [w.id, (cellOf(grid, sid, w.id) || {}).text]).filter(x => x[1] != null)) };
-      download(`${cls.name}_${s.number}_${s.name}.csv`, toCsv(one, texts));
-    };
+      download(`${cls.name}_${s.number}_${s.name}.csv`, toCsv(one, await csvTexts(one, cls.id, sid)));
+    });
   }
 
   const want = sessionStorage.getItem('openStudent'); // "학생 현황 ›" from a message thread
@@ -371,11 +398,9 @@ function drawGrid(v, cls) {
   };
 
   // CSV
-  $('#csv').onclick = () => {
-    const texts = {};
-    grid.students.forEach(s => grid.works.forEach(w => { const c = cellOf(grid, s.id, w.id); if (c) (texts[s.id] ??= {})[w.id] = c.text; }));
-    download(`${cls.name}.csv`, toCsv(grid, texts));
-  };
+  $('#csv').onclick = () => busyBtn($('#csv'), '내려받는 중…', async () => {
+    download(`${cls.name}.csv`, toCsv(grid, await csvTexts(grid, cls.id)));
+  });
 
   // new assignment (targets only for this class; another class gets the whole class)
   let pick = bindPicker($('#newPick'), grid.students, missIds, n => {
