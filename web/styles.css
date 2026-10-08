@@ -716,3 +716,26 @@ button.pitem:hover { border-color: var(--deep-line); }
 @media (min-width: 961px) { .r-bento { grid-template-columns: 1.9fr 1fr 1fr; } }
 .codeacts button { white-space: nowrap; justify-content: flex-start; }
 .codecard > div:nth-child(2) { min-width: 0; }
+
+/* ---------- v9: QA fixes ---------- */
+/* .dock .sec shares a class name with section headers; undo their space-between/margin so icons sit centred. */
+.dock .sec { justify-content: center; margin: 0; }
+/* Touch screens: tapping plain text opened Chrome's "Touch to Search" panel. Only typed and message text stays selectable. */
+@media (hover: none) {
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea, .b, .ann p, .txt { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+}
+
+.dock:empty { display: none; }
+.iconbtn, .hello .ib { width: 44px; height: 44px; }
+.linkbtn { min-height: 44px; padding: 0 6px; }
+.tabs2 a { padding: 10px 7px; }
+.topbar .t small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* teacher */
+.ann .h .lk, .ann .h .tag { white-space: nowrap; flex: none; }
+.xsheet .s.no b { color: #8b9690; border-color: #4a5751; }
+.xsheet td.na { color: #5d6862; }
+.rowacts button { min-height: 32px; padding: 4px 8px; border-radius: 8px; }
+.rowacts button:hover { background: var(--chip); }
+.inbox { grid-template-columns: 330px minmax(0, 1fr); }
+@media (max-width: 720px) { .inbox { grid-template-columns: minmax(0, 1fr); } }

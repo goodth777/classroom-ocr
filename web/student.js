@@ -83,7 +83,7 @@ function taskCard(a) {
   const meta = k === 'done' ? `${shortDate(a.updated)} 제출`
     : k === 'sending' ? `방금 제출 · ${attach(q)}`
     : k === 'fail' ? `${attach(q)}은 이 휴대폰에 있어요`
-    : a.due ? `🗓 ${dueLabel(a.due)} 마감` : '마감일 없음';
+    : a.due ? `📅 ${dueLabel(a.due)} 마감` : '마감일 없음';
   const tail = k === 'todo' ? '<div class="cta"><span>촬영해서 제출하기</span><span>→</span></div>'
     : k === 'fail' ? `<button class="retrybtn" data-retry="${esc(q.id)}"><span>다시 보내기</span><span>↻</span></button>` : '';
   return `<a class="task ${k === 'done' || k === 'sending' ? 'done' : ''} ${k === 'sending' ? 'sendingc' : ''} ${k === 'fail' ? 'failc' : ''}" href="#/a/${a.id}">
@@ -141,7 +141,6 @@ function renderHome() {
     <div class="sec"><h3>진행 중</h3><span>${pending.length}</span></div>
     <div class="tasks">${pending.map(taskCard).join('') || `<p class="empty">${list.length ? '모든 과제를 제출했어요 🎉' : '아직 받은 과제가 없어요'}</p>`}</div>
     ${done.length ? `<div class="sec"><h3>완료</h3><span>${done.length}</span></div><div class="tasks">${done.map(taskCard).join('')}</div>` : ''}
-    ${pending[0] ? `<a class="fab" href="#/a/${pending[0].id}">📷 손글씨 촬영</a>` : ''}
     <dialog class="sheet menu" id="menu">
       <div class="menu-head"><div class="av">${esc(name.slice(-2))}</div><div><b>${esc(name)}</b><span>${esc([me.cls.name, me.cls.section, me.student.number + '번'].filter(Boolean).join(' · '))}</span></div></div>
       <div class="settings" id="pushSet">${pushSettings()}</div>
@@ -283,7 +282,7 @@ export async function studentEditor(id) {
       <section class="v-edit">
         <div class="strip" id="strip"></div>
         <div class="queue" id="queue" hidden></div>
-        <div class="edhead"><b>읽은 글자 확인·수정</b>
+        <div class="edhead"><b>${isDone(a) ? '제출한 내용 · 고쳐서 다시 낼 수 있어요' : '읽은 글자 확인·수정'}</b>
           <div class="tools"><button id="undo" type="button">↺ 되돌리기</button><button id="viewPh" type="button">사진 보기</button></div></div>
         <div class="edwrap">
           <textarea id="text" class="editor" placeholder="여기에 답을 쓰거나, 읽은 글자를 고쳐 주세요" aria-label="제출할 내용">${esc(draft)}</textarea>
@@ -304,9 +303,9 @@ export async function studentEditor(id) {
   const text = $('#text');
   const pending = () => st.photos.some(p => p.status === 'wait' || p.status === 'run');
   const DOCK = {
-    before: () => `<label class="main">${fileInput}📷 손글씨 촬영</label>`,
+    before: () => '',
     reading: () => '<button class="sec small" id="cancel">취소</button><div class="main dim">읽는 중…</div>',
-    edit: () => `${st.photos.length < MAX_PHOTOS ? `<label class="sec" aria-label="한 장 더 촬영">${fileInput}📷</label>` : ''}${pending()
+    edit: () => `${pending()
       ? '<div class="main dim">사진을 다 읽으면 제출할 수 있어요</div>'
       : `<button class="main" id="submit">${isDone(a) ? '다시 제출하기' : '제출하기'}</button>`}`,
     done: () => '<a class="main" href="#/home">내 과제로 돌아가기</a>',
@@ -327,7 +326,7 @@ export async function studentEditor(id) {
       <button class="ph ${p.status} ${i === st.sel ? 'on' : ''}" data-i="${i}" style="background-image:url(${p.url})" aria-label="사진 ${i + 1} ${STATUS[p.status]}">
         <span class="n">${i + 1}</span><span class="s">${STATUS[p.status]}</span>
         <span class="del" data-del="${i}" role="button" aria-label="사진 ${i + 1} 삭제">✕</span></button>`).join('')
-      + (st.photos.length < MAX_PHOTOS ? `<label class="ph add" aria-label="사진 추가">${fileInput}＋<small>추가</small></label>` : '');
+      + (st.photos.length < MAX_PHOTOS ? `<label class="ph add" aria-label="사진 추가">${fileInput}📷<small>사진 추가</small></label>` : '');
     const runIdx = st.photos.findIndex(p => p.status === 'run');
     const left = st.photos.filter(p => p.status === 'wait' || p.status === 'run').length;
     $('#queue').hidden = runIdx < 0;
