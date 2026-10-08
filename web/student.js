@@ -4,6 +4,7 @@ import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
 import { esc, dDay, dueLabel } from './lib.js';
 import * as outbox from './outbox.js';
 import { homeIcons, homeNotice } from './inbox.js';
+import { pushState, prefs, enablePush, disablePush, setPrefs } from './push.js';
 
 let me = null;
 
@@ -128,7 +129,7 @@ function renderHome() {
       <button class="greet" id="profile" aria-label="내 정보"><small>${esc([me.cls.section, me.cls.name].filter(Boolean).join(' · '))}</small><strong>안녕하세요, ${esc(firstName(name))}님 <span>›</span></strong></button>
       ${homeIcons(me)}
     </header>
-    ${banner}${homeNotice(me)}
+    ${banner}${homeNotice(me)}${optinCard()}
     <section class="s-bento">
       <div class="tile hero"><div class="k">제출 현황</div>
         <div class="ring" style="--p:${pct}"><span>${done.length}/${list.length}</span></div>
@@ -143,13 +144,20 @@ function renderHome() {
     ${pending[0] ? `<a class="fab" href="#/a/${pending[0].id}">📷 손글씨 촬영</a>` : ''}
     <dialog class="sheet menu" id="menu">
       <div class="menu-head"><div class="av">${esc(name.slice(-2))}</div><div><b>${esc(name)}</b><span>${esc([me.cls.name, me.cls.section, me.student.number + '번'].filter(Boolean).join(' · '))}</span></div></div>
+      <div class="settings" id="pushSet">${pushSettings()}</div>
       <button class="ghost danger" id="leave">이 기기에서 나가기</button>
       <p class="muted small">나가면 다음에 수업 코드와 PIN을 다시 입력해야 해요.</p>
       <form method="dialog"><button class="ghost">닫기</button></form>
+    </dialog>
+    <dialog class="sheet menu" id="iosDlg">
+      <h3>📲 아이폰에서 알림 받기</h3><p class="muted small">아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요 (iOS 16.4 이상).</p>
+      <div class="step"><span>1</span>아래쪽 공유 버튼 <b>⬆︎</b> 누르기</div><div class="step"><span>2</span><b>홈 화면에 추가</b> 누르기</div><div class="step"><span>3</span>홈 화면의 앱을 열고 <b>알림 켜기</b></div>
+      <form method="dialog"><button class="ghost">확인</button></form>
     </dialog>`);
 
   $('#profile').onclick = () => $('#menu').showModal();
   document.getElementById('app').onclick = e => {
+    if (document.querySelector('.hello')) pushClick(e);
     const one = e.target.closest('[data-retry]');
     const all = e.target.closest('[data-retryall]');
     if ((!one && !all) || !document.querySelector('.hello')) return; // home only; the editor has its own handler
@@ -160,10 +168,63 @@ function renderHome() {
   };
   $('#leave').onclick = async () => {
     $('#leave').disabled = true;
+    await disablePush();
     try { await call('leave', { token: store.token() }); } catch {} // leaving locally is enough if the server is unreachable
     store.clearToken();
     location.hash = '#/join';
   };
+}
+
+// ---------- push opt-in (home card + menu switches) ----------
+
+const dismissed = () => { try { return localStorage.getItem('pushDismissed') === '1'; } catch { return false; } };
+const KINDS = [['msg', '💬 선생님 메시지'], ['ann', '📢 반 공지 · 새 과제'], ['due', '⏰ 마감 전날 알림 (저녁 6시)']];
+const sw = (on, attrs) => `<button type="button" class="tg ${on ? '' : 'off'}" role="switch" aria-checked="${on}" ${attrs}></button>`;
+
+function optinCard() {
+  const st = pushState();
+  if (!['off', 'ios'].includes(st) || dismissed()) return '';
+  return `<div class="optin"><div class="ic">📲</div><div class="tx"><b>알림 받기</b><p>선생님 메시지·공지·마감 전날을 앱을 닫아도 알려 드려요</p></div>
+    <button class="go" data-push-on>켜기</button><button class="x" data-push-dismiss aria-label="닫기">✕</button></div>`;
+}
+
+function pushSettings() {
+  const st = pushState();
+  if (st === 'unsupported') return '';
+  const head = `<div class="r"><div>🔔 이 휴대폰에 알림 받기<small>${{ on: '앱을 닫아도 알려 드려요', off: '앱을 닫아도 알려 드려요', ios: '아이폰은 홈 화면에 추가해야 받을 수 있어요', denied: '휴대폰 설정에서 이 앱의 알림을 허용해 주세요' }[st]}</small></div>
+    ${st === 'denied' ? '' : sw(st === 'on', 'data-push-master')}</div>`;
+  const p = prefs();
+  return head + (st === 'on' ? KINDS.map(([k, label]) => `<div class="r">${label}${sw(p[k], `data-kind="${k}"`)}</div>`).join('') : '');
+}
+
+async function turnOn(btn) {
+  if (pushState() === 'ios') return $('#iosDlg').showModal();
+  if (btn) btn.disabled = true;
+  try {
+    await enablePush('student');
+    toast('알림을 켰어요 🔔');
+  } catch (e) {
+    toast(e.message);
+  }
+  renderHome();
+}
+
+// Clicks on the opt-in card and the menu switches (called from the home click handler).
+async function pushClick(e) {
+  const t = e.target;
+  if (t.closest('[data-push-on]')) turnOn(t.closest('[data-push-on]'));
+  else if (t.closest('[data-push-dismiss]')) { try { localStorage.setItem('pushDismissed', '1'); } catch {} t.closest('.optin').remove(); }
+  else if (t.closest('[data-push-master]')) {
+    if (pushState() === 'on') { await disablePush(); toast('이 휴대폰의 알림을 껐어요'); $('#pushSet').innerHTML = pushSettings(); }
+    else { $('#menu').close(); turnOn(); }
+  } else if (t.closest('[data-kind]')) {
+    const p = prefs();
+    const k = t.closest('[data-kind]').dataset.kind;
+    p[k] = !p[k];
+    const saving = setPrefs(p); // stores locally first, so the redraw shows the new state
+    $('#pushSet').innerHTML = pushSettings();
+    try { await saving; } catch (err) { toast(err.message); }
+  }
 }
 
 // Shrinks the photo so uploads stay small (one submission carries all photos).

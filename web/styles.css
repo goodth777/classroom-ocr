@@ -618,3 +618,26 @@ button.pitem:hover { border-color: var(--deep-line); }
 }
 .clist .search { width: auto; }
 .cv .a, .cpane .th .a { line-height: 1; }
+.ib .n { top: -2px; right: -3px; border-width: 1.5px; } /* sits on the icon's edge, no visible gap */
+
+/* ---------- v6: push opt-in ---------- */
+.optin { display: flex; gap: 12px; align-items: center; background: var(--card); border: 1px solid var(--deep-line); border-radius: 18px; padding: 14px; margin-bottom: 14px; }
+.optin .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; font-size: 19px; flex: none; }
+.optin .tx { flex: 1; min-width: 0; }
+.optin b { display: block; font-size: 14px; }
+.optin p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.optin .go { flex: none; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 13px; padding: 9px 14px; border-radius: 11px; }
+.optin .x { background: none; border: 0; color: var(--muted); font-size: 14px; padding: 4px; margin-left: -4px; }
+.settings { background: var(--card); border: 1px solid var(--line); border-radius: 16px; margin-bottom: 4px; }
+.settings:empty { display: none; }
+.settings .r { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 14px; font-size: 14px; border-top: 1px solid var(--line); }
+.settings .r:first-child { border-top: 0; }
+.settings small { display: block; font-size: 12px; color: var(--muted); }
+.tg { width: 46px; height: 28px; border-radius: 14px; border: 0; padding: 0; background: var(--accent); position: relative; flex: none; transition: background .15s; }
+.tg::after { content: ""; position: absolute; top: 3px; left: 21px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: left .15s; }
+.tg.off { background: #39413d; }
+.tg.off::after { left: 3px; }
+.step { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.step span { width: 26px; height: 26px; border-radius: 50%; background: var(--deep); color: var(--accent); display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none; }
+.pcpush { margin-top: 6px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--deep-line); background: #0f1b16; font-size: 12.5px; font-weight: 700; color: var(--accent); display: flex; justify-content: space-between; align-items: center; text-align: left; }
+.pcpush small { color: var(--muted); font-weight: 500; }

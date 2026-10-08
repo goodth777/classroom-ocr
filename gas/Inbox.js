@@ -37,6 +37,7 @@ function send_(req, who) {
     assignmentId: String(req.assignmentId || ''), created: now_(), readAt: '' };
   withLock_(() => append_('Messages', m));
   bump_(who.cls.id);
+  notifyTeacher_({ title: '💬 ' + who.student.name + ' · ' + who.cls.name, body: m.text, url: '#/t/' + who.cls.id + '/msg/' + who.student.id, tag: 'chat-' + who.student.id });
   return msgOut_(m);
 }
 
@@ -110,6 +111,7 @@ function tSend_(req) {
     assignmentId: String(req.assignmentId || ''), created: now_(), readAt: '' };
   withLock_(() => append_('Messages', m));
   bump_(st.classId);
+  notifyStudents_([st.id], 'msg', { title: '💬 선생님', body: m.text, url: '#/chat', tag: 'chat' });
   return msgOut_(m);
 }
 
@@ -120,6 +122,8 @@ function postAnn_(req) {
   const a = { id: newId_(), classId: req.classId, title: title, body: String(req.body || '').trim(), pinned: req.pinned ? 'Y' : '', created: now_() };
   withLock_(() => append_('Announcements', a));
   bump_(req.classId);
+  notifyStudents_(rows_('Students').filter(s => s.classId === req.classId).map(s => s.id), 'ann',
+    { title: '📢 공지 · ' + title, body: a.body, url: '#/chat/ann', tag: 'ann-' + a.id });
   return a.id;
 }
 

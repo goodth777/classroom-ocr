@@ -276,12 +276,14 @@ function createAssignment_(req) {
   if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('반을 찾을 수 없어요.', 'notfound');
   const due = /^\d{4}-\d{2}-\d{2}$/.test(req.due || '') ? req.due : '';
   const studentIds = targetIds_(req.classId, req.studentIds);
-  return withLock_(() => {
+  const a = withLock_(() => {
     const a = { id: newId_(), classId: req.classId, title: title, description: String(req.description || '').trim(), due: due, created: now_(), studentIds: studentIds };
     append_('Assignments', a);
     bump_(a.classId);
-    return a.id;
+    return a;
   });
+  notifyStudents_(targetStudents_(a), 'ann', { title: '📝 새 과제 · ' + a.title, body: a.due ? Utilities.formatDate(new Date(a.due + 'T00:00:00+09:00'), 'Asia/Seoul', 'M월 d일') + ' 마감' : '', url: '#/a/' + a.id, tag: 'a-' + a.id });
+  return a.id;
 }
 
 // null/empty = whole class; otherwise only ids that really belong to the class are kept.
@@ -346,6 +348,9 @@ function routes_() { return {
   postAnn: { auth: 'teacher', fn: postAnn_ },
   pinAnn: { auth: 'teacher', fn: pinAnn_ },
   delAnn: { auth: 'teacher', fn: delAnn_ },
+  pushSub: { auth: 'student', fn: pushSub_ },
+  tPushSub: { auth: 'teacher', fn: tPushSub_ },
+  pushUnsub: { auth: 'none', fn: pushUnsub_ },
   sheetUrl: { auth: 'teacher', fn: sheetUrl_ },
 }; }
 

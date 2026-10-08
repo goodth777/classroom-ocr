@@ -1,5 +1,6 @@
 import { call, quiet } from './api.js';
 import { bubbles, bindComposer } from './inbox.js';
+import { pushState, enablePush, disablePush } from './push.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
 import { esc, DONE, assigned, summarize, toCsv, dDay, dueLabel, parseRoster } from './lib.js';
@@ -79,6 +80,7 @@ function shell(classes, cls, tab, students, body, actions) {
       ${classes.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tab}">${esc(c.name)}${c.unread ? `<span class="badge">${c.unread}</span>` : `<small>${esc(c.section)}</small>`}</a>`).join('')}
       <button class="addclass" id="addClass">＋ 새 반 만들기</button>
       <div class="me"><div class="av">T</div><div><b>선생님</b><span>개인 구글 계정</span></div></div>
+      ${pcPush()}
       <button class="sheetlink" id="openSheet">📊 원본 시트 열기</button>
     </aside>
     <main class="tmain">
@@ -100,8 +102,24 @@ function shell(classes, cls, tab, students, body, actions) {
   </div>`;
 }
 
+function pcPush() {
+  const st = pushState();
+  if (st === 'unsupported' || st === 'ios') return '';
+  return `<button class="pcpush" id="pcPush">${st === 'on' ? '🔔 PC 알림 켜짐 <small>끄기</small>' : st === 'denied' ? '🔕 PC 알림 차단됨 <small>브라우저 설정</small>' : '🔔 PC 알림 켜기 <small>학생 메시지</small>'}</button>`;
+}
+
 function bindShell() {
   $('#addClass').onclick = () => $('#classDlg').showModal();
+  if ($('#pcPush')) $('#pcPush').onclick = async () => {
+    const st = pushState();
+    if (st === 'denied') return toast('주소창 왼쪽 자물쇠 → 알림 → 허용으로 바꿔 주세요');
+    try {
+      if (st === 'on') { await disablePush(); toast('PC 알림을 껐어요'); }
+      else { await enablePush('teacher'); toast('PC 알림을 켰어요. 학생 메시지가 오면 알려 드려요 🔔'); }
+    } catch (e) { toast(e.message); }
+    $('#pcPush').outerHTML = pcPush();
+    bindShell();
+  };
   $('#openSheet').onclick = async () => {
     const w = window.open('', '_blank');
     try { w.location = await call('sheetUrl'); } catch (e) { w.close(); toast(e.message); }
