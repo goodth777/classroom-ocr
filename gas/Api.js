@@ -20,7 +20,7 @@ function doPost(e) {
   const t0 = Date.now();
   try {
     const req = JSON.parse(e.postData.contents);
-    const route = ROUTES_[req.action];
+    const route = routes_()[req.action];
     if (!route) throw err_('알 수 없는 요청이에요.');
     ensureSchema_();
     let who = null;
@@ -118,7 +118,7 @@ function computeMe_(who) {
     return { id: a.id, title: a.title, description: a.description, due: a.due, created: a.created,
       state: s ? 'TURNED_IN' : 'NEW', updated: s ? s.submittedAt : '', late: !!(s && s.late), text: s ? s.text : '' };
   });
-  return { student: { name: who.student.name, number: +who.student.number }, cls: { name: who.cls.name, section: who.cls.section }, assignments: assignments };
+  return { student: { name: who.student.name, number: +who.student.number }, cls: { name: who.cls.name, section: who.cls.section }, assignments: assignments, inbox: studentInbox_(who) };
 }
 
 function ocrAction_(req) {
@@ -176,12 +176,13 @@ function leave_(req, who) {
 // ---------- teacher ----------
 
 function classes_() {
+  const unread = unreadByClass_();
   const students = rows_('Students');
   const joined = new Set(rows_('Devices').map(d => d.studentId));
   return rows_('Classes').map(c => {
     const mine = students.filter(s => s.classId === c.id);
     return { id: c.id, name: c.name, section: c.section, subject: c.subject, code: c.code,
-      students: mine.length, joined: mine.filter(s => joined.has(s.id)).length };
+      students: mine.length, joined: mine.filter(s => joined.has(s.id)).length, unread: unread[c.id] || 0 };
   });
 }
 
@@ -317,7 +318,7 @@ function computeView_(req) {
 
 const sheetUrl_ = () => db_().getUrl();
 
-const ROUTES_ = {
+function routes_() { return {
   peek: { auth: 'none', fn: peek_ },
   join: { auth: 'none', fn: join_ },
   me: { auth: 'student', fn: me_ },
@@ -335,8 +336,18 @@ const ROUTES_ = {
   createAssignment: { auth: 'teacher', fn: createAssignment_ },
   updateTargets: { auth: 'teacher', fn: updateTargets_ },
   view: { auth: 'teacher', fn: view_ },
+  chat: { auth: 'student', fn: chat_ },
+  send: { auth: 'student', fn: send_ },
+  readMsgs: { auth: 'student', fn: readMsgs_ },
+  readAnn: { auth: 'student', fn: readAnn_ },
+  tInbox: { auth: 'teacher', fn: tInbox_ },
+  tThread: { auth: 'teacher', fn: tThread_ },
+  tSend: { auth: 'teacher', fn: tSend_ },
+  postAnn: { auth: 'teacher', fn: postAnn_ },
+  pinAnn: { auth: 'teacher', fn: pinAnn_ },
+  delAnn: { auth: 'teacher', fn: delAnn_ },
   sheetUrl: { auth: 'teacher', fn: sheetUrl_ },
-};
+}; }
 
 // ---------- one-time setup (run from the Apps Script editor) ----------
 

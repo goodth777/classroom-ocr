@@ -86,3 +86,12 @@ export function parseRoster(text) {
   });
   return out;
 }
+
+// Short Korea-time label for a message/notice: "09:02" today, "어제 21:42", else "10/6".
+export function when(iso, now = Date.now()) {
+  const k = t => new Date(t + 9 * 36e5);
+  const d = k(Date.parse(iso));
+  const days = Math.round((Date.parse(k(now).toISOString().slice(0, 10)) - Date.parse(d.toISOString().slice(0, 10))) / 864e5);
+  const hm = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+  return days <= 0 ? hm : days === 1 ? `어제 ${hm}` : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}

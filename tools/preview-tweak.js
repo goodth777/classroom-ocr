@@ -69,7 +69,8 @@
       const el = document.querySelector(c.where);
       if (!el) return;
       if (c.kind === 'style') el.style[c.detail] = c.value;
-      if (c.kind === 'hide') el.style.display = 'none';
+      if (c.kind === 'drag') { el.style.transform = c.css; if (getComputedStyle(el).position === 'static') el.style.position = 'relative'; el.style.zIndex = '50'; }
+      if (c.kind === 'hide' || c.kind === 'delete') el.style.display = 'none';
       if (c.kind === 'text' && el.innerText !== c.value) el.innerText = c.value;
     });
     drawNotes();
@@ -99,7 +100,7 @@
   function paintLog() {
     const box = panel.querySelector('.log');
     if (!box) return;
-    box.innerHTML = '<b>변경 기록</b>' + log.slice().reverse().map(c => `<div>${c.screen ? `[${c.screen}] ` : ''}${c.kind === 'note' ? '📝' : c.kind === 'text' ? '✎' : c.kind === 'hide' ? '🙈' : c.kind === 'move' ? '↕' : '🎨'} "${c.text}" ${c.kind === 'style' ? `${c.detail}=${c.value}` : c.kind === 'note' || c.kind === 'text' ? '→ ' + c.value : c.detail || ''}</div>`).join('');
+    box.innerHTML = '<b>변경 기록</b>' + log.slice().reverse().map(c => `<div>${c.screen ? `[${c.screen}] ` : ''}${c.kind === 'note' ? '📝' : c.kind === 'text' ? '✎' : c.kind === 'hide' ? '🙈' : c.kind === 'delete' ? '🗑' : c.kind === 'drag' ? '✥' : c.kind === 'move' ? '↕' : '🎨'} "${c.text}" ${c.kind === 'style' ? `${c.detail}=${c.value}` : c.kind === 'drag' ? `${c.value} 만큼 이동` : c.kind === 'note' || c.kind === 'text' ? '→ ' + c.value : c.detail || ''}</div>`).join('');
   }
 
   function openPanel(el) {
@@ -116,8 +117,8 @@
       <div class="lab">여백 · 모서리</div><div class="row">
         <button data-a="pad-">안쪽 −</button><button data-a="pad+">안쪽 +</button><button data-a="mar-">바깥 −</button><button data-a="mar+">바깥 +</button>
         <button data-a="rad-">둥글기 −</button><button data-a="rad+">둥글기 +</button></div>
-      <div class="lab">위치 · 표시</div><div class="row">
-        <button data-a="up">▲ 앞으로</button><button data-a="down">▼ 뒤로</button><button data-a="hide">숨기기</button><button data-a="parent">↖ 바깥 상자 선택</button></div>
+      <div class="lab">위치 · 표시 <span style="font-weight:500">(요소를 끌어서 옮길 수도 있어요 · Delete 키로 삭제)</span></div><div class="row">
+        <button data-a="up">▲ 앞으로</button><button data-a="down">▼ 뒤로</button><button data-a="hide">숨기기</button><button data-a="del" style="color:#c43c3c">🗑 삭제</button><button data-a="parent">↖ 바깥 상자 선택</button></div>
       <div class="lab">📝 메모 (말로 남기기)</div><textarea id="twNote" placeholder="예: 이 버튼을 더 눈에 띄게, 아이콘을 시계로"></textarea>
       <div class="row" style="margin-top:6px"><button data-a="note">메모 붙이기</button><button data-a="close">닫기</button></div>
       <div class="log"></div>`;
@@ -140,6 +141,7 @@
     if (a === 'rad-') step('borderRadius', -2);
     if (a === 'rad+') step('borderRadius', 2);
     if (a === 'hide') { sel.style.display = 'none'; record(sel, 'hide', '숨기기'); }
+    if (a === 'del') removeSel();
     if (a === 'up' && sel.previousElementSibling) { sel.parentElement.insertBefore(sel, sel.previousElementSibling); record(sel, 'move', '앞으로 이동'); }
     if (a === 'down' && sel.nextElementSibling) { sel.parentElement.insertBefore(sel.nextElementSibling, sel); record(sel, 'move', '뒤로 이동'); }
     if (a === 'parent' && sel.parentElement && sel.parentElement !== document.body) openPanel(sel.parentElement);
@@ -149,6 +151,58 @@
       if (v) { record(sel, 'note', '', v); panel.querySelector('#twNote').value = ''; drawNotes(); }
     }
     if (a === 'close') { panel.hidden = true; sel.classList.remove('tw-sel'); sel = null; }
+  });
+
+  function removeSel() {
+    if (!sel) return;
+    record(sel, 'delete', '삭제');
+    sel.style.display = 'none';
+    sel.classList.remove('tw-sel');
+    sel = null;
+    panel.hidden = true;
+  }
+
+  // Drag to move: the element follows the pointer (as a visual offset) and the offset is recorded.
+  let drag = null;
+  let dragged = false;
+  document.addEventListener('pointerdown', e => {
+    if (!on || inTool(e.target) || e.target.isContentEditable || e.button !== 0) return;
+    // Dragging inside the selected box moves that whole box (pick it with "바깥 상자 선택"); otherwise the touched element.
+    const el = sel && sel.contains(e.target) ? sel : e.target;
+    const r = el.getBoundingClientRect();
+    const scale = el.offsetWidth ? r.width / el.offsetWidth : 1; // previews are scaled to fit the pane
+    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(el.style.transform || '');
+    drag = { el, x: e.clientX, y: e.clientY, scale, bx: m ? +m[1] : 0, by: m ? +m[2] : 0, moved: false };
+  }, true);
+  document.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x) / drag.scale;
+    const dy = (e.clientY - drag.y) / drag.scale;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true;
+    drag.el.classList.add('tw-sel');
+    drag.el.style.position = drag.el.style.position || (getComputedStyle(drag.el).position === 'static' ? 'relative' : '');
+    drag.el.style.zIndex = '50';
+    drag.el.style.transform = `translate(${Math.round(drag.bx + dx)}px, ${Math.round(drag.by + dy)}px)`;
+    e.preventDefault();
+  }, true);
+  document.addEventListener('pointerup', () => {
+    if (!drag) return;
+    if (drag.moved) {
+      dragged = true;
+      const t = drag.el.style.transform;
+      record(drag.el, 'style', 'transform', t);
+      const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(t);
+      if (m) log[log.length - 1] = { ...log[log.length - 1], kind: 'drag', detail: 'transform', value: `가로 ${m[1]}px, 세로 ${m[2]}px`, css: t };
+      save(log);
+      paintLog();
+      openPanel(drag.el);
+    }
+    drag = null;
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (!on || !sel || e.target.isContentEditable || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSel(); }
   });
 
   function editText(el) {
@@ -170,6 +224,7 @@
     if (!on || inTool(e.target) || e.target.isContentEditable) return;
     e.preventDefault();
     e.stopPropagation();
+    if (dragged) { dragged = false; return; }
     e.target.classList.remove('tw-hover');
     openPanel(e.target);
   }, true);
@@ -185,6 +240,7 @@
     document.getElementById('twToggle').classList.toggle('on', on);
     document.getElementById('twToggle').textContent = on ? '✏️ 조정 중 (끄기)' : '✏️ 조정 모드';
     if (!on) { panel.hidden = true; if (sel) sel.classList.remove('tw-sel'); sel = null; }
+    document.body.style.userSelect = on ? 'none' : '';
   };
   document.getElementById('twUndo').onclick = () => { log.pop(); save(log); location.reload(); };
 

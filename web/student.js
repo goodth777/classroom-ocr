@@ -3,6 +3,7 @@ import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
 import { esc, dDay, dueLabel } from './lib.js';
 import * as outbox from './outbox.js';
+import { homeIcons, homeNotice } from './inbox.js';
 
 let me = null;
 
@@ -124,10 +125,10 @@ function renderHome() {
   const name = me.student.name;
 
   render(`<header class="hello">
-      <div><small>${esc([me.cls.section, me.cls.name].filter(Boolean).join(' · '))}</small><strong>안녕하세요, ${esc(firstName(name))}님</strong></div>
-      <button class="av" id="profile" aria-label="내 정보">${esc(name.slice(-2))}</button>
+      <button class="greet" id="profile" aria-label="내 정보"><small>${esc([me.cls.section, me.cls.name].filter(Boolean).join(' · '))}</small><strong>안녕하세요, ${esc(firstName(name))}님 <span>›</span></strong></button>
+      ${homeIcons(me)}
     </header>
-    ${banner}
+    ${banner}${homeNotice(me)}
     <section class="s-bento">
       <div class="tile hero"><div class="k">제출 현황</div>
         <div class="ring" style="--p:${pct}"><span>${done.length}/${list.length}</span></div>
@@ -197,6 +198,7 @@ export async function studentEditor(id) {
     <header class="topbar">
       <a href="#/home" class="iconbtn" aria-label="뒤로">‹</a>
       <div class="t"><small>${esc(me.cls.name)}${a.due ? ` · ${dueLabel(a.due)} 마감` : ''}</small><b>${esc(a.title)}</b></div>
+      <a class="iconbtn ask" href="#/chat/a/${a.id}" aria-label="이 과제에 대해 선생님께 질문">💬</a>
       <span class="pill" id="pill"></span>
     </header>
     <div class="ed" id="ed">

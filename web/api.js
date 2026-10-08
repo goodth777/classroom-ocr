@@ -48,3 +48,5 @@ export async function call(...args) {
   busy(1);
   try { return await raw(...args); } finally { busy(-1); }
 }
+// Background polling (open chat) skips the "동기화 중" bar so it doesn't flicker every few seconds.
+export const quiet = raw;

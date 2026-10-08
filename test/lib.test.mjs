@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { esc, stateLabel, summarize, toCsv, dDay, dueLabel } from '../web/lib.js';
+import { esc, stateLabel, summarize, toCsv, dDay, dueLabel, when } from '../web/lib.js';
 
 const grid = {
   students: [{ id: 's1', name: 'A' }, { id: 's2', name: 'B' }],
@@ -94,4 +94,12 @@ test('summarize and toCsv skip students outside an assignment target', async () 
   assert.deepStrictEqual(s.missing, [{ name: 'A', miss: 1 }, { name: 'B', miss: 1 }]);
   const lines = toCsv(g, {}).slice(1).split('\r\n');
   assert.strictEqual(lines[1], '"A","미제출","–"');
+});
+
+test('when labels today, yesterday, older in Korea time', () => {
+  const now = Date.parse('2026-10-08T03:00:00Z'); // 12:00 KST
+  assert.strictEqual(when('2026-10-08T00:02:00Z', now), '09:02');
+  assert.strictEqual(when('2026-10-07T12:42:00Z', now), '어제 21:42');
+  assert.strictEqual(when('2026-10-07T16:00:00Z', now), '01:00'); // after midnight KST = today
+  assert.strictEqual(when('2026-10-05T23:00:00Z', now), '10/6');
 });

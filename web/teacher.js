@@ -1,4 +1,5 @@
-import { call } from './api.js';
+import { call, quiet } from './api.js';
+import { bubbles, bindComposer } from './inbox.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
 import { esc, DONE, assigned, summarize, toCsv, dDay, dueLabel, parseRoster } from './lib.js';
@@ -39,11 +40,11 @@ function bindEsc() {
 
 const busyUI = () => document.querySelector('dialog[open], .drawer.open, .board:not([hidden])');
 
-export async function teacherView(classId, tab) {
+export async function teacherView(classId, tab, sub) {
   const n = currentNav();
   const key = 'view:' + (classId || '');
   const old = store.cache(key);
-  if (old && old.classId) draw(old, tab); else loading('teacher');
+  if (old && old.classId) draw(old, tab, sub); else loading('teacher');
   let v;
   try {
     v = await call('view', { classId });
@@ -56,14 +57,15 @@ export async function teacherView(classId, tab) {
   store.setCache('view:', v);
   if (!v.classId) return drawEmpty(v);
   if (classId !== v.classId) return location.replace(`#/t/${v.classId}/${tab || 'grid'}`);
-  if (JSON.stringify(v) !== JSON.stringify(old) && !busyUI()) draw(v, tab);
+  if (JSON.stringify(v) !== JSON.stringify(old) && !busyUI()) draw(v, tab, sub);
 }
 
 const reload = (cls, tab) => teacherView(cls.id, tab).catch(e => toast(e.message));
 
-function draw(v, tab) {
+function draw(v, tab, sub) {
   bindEsc();
   const cls = v.classes.find(c => c.id === v.classId);
+  if (tab === 'msg') return drawMsg(v, cls, sub || '');
   return tab === 'roster' ? drawRoster(v, cls) : drawGrid(v, cls);
 }
 
@@ -74,7 +76,7 @@ function shell(classes, cls, tab, students, body, actions) {
     <aside class="side">
       <div class="brand"><i></i><span>과제 제출</span></div>
       <div class="lab">내 반</div>
-      ${classes.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tab}">${esc(c.name)}<small>${esc(c.section)}</small></a>`).join('')}
+      ${classes.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tab}">${esc(c.name)}${c.unread ? `<span class="badge">${c.unread}</span>` : `<small>${esc(c.section)}</small>`}</a>`).join('')}
       <button class="addclass" id="addClass">＋ 새 반 만들기</button>
       <div class="me"><div class="av">T</div><div><b>선생님</b><span>개인 구글 계정</span></div></div>
       <button class="sheetlink" id="openSheet">📊 원본 시트 열기</button>
@@ -82,7 +84,8 @@ function shell(classes, cls, tab, students, body, actions) {
     <main class="tmain">
       ${cls ? `<div class="thead">
         <h1>${esc(cls.name)}</h1><span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
-        <nav class="tabs"><a class="${tab !== 'roster' ? 'on' : ''}" href="#/t/${cls.id}/grid">과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">학생 명단</a></nav>
+        <nav class="tabs"><a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">학생 명단</a>
+          <a class="${tab === 'msg' ? 'on' : ''}" href="#/t/${cls.id}/msg">💬 메시지${cls.unread ? ` <span class="badge">${cls.unread}</span>` : ''}</a></nav>
         <span class="sp"></span>${actions}
       </div>` : ''}
       ${body}
@@ -323,7 +326,7 @@ function drawGrid(v, cls) {
           : `<div class="pitem miss"><div class="r"><b>${esc(w.title)}</b><span class="pill no">미제출</span></div>
               <div class="m">${w.due ? `${esc(dueLabel(w.due))} 마감 · ${dDay(w.due) >= 0 ? `D-${dDay(w.due)}` : '마감 지남'}` : '마감일 없음'}</div></div>`;
       }).join('') || '<p class="muted small">이 학생에게 낸 과제가 없어요.</p>'}</div>
-      <div class="acts"><button class="btn" id="sCsv">⬇ 이 학생 CSV</button><button class="btn" id="sPin">PIN 보기</button></div>`;
+      <div class="acts"><a class="btn" href="#/t/${cls.id}/msg/${sid}">💬 메시지</a><button class="btn" id="sCsv">⬇ 이 학생 CSV</button><button class="btn" id="sPin">PIN 보기</button></div>`;
     $('#spanel').classList.add('open');
     $('#spanel').querySelector('[data-shut]').onclick = () => { $('#spanel').classList.remove('open'); document.querySelectorAll('#rows tr.sel').forEach(tr => tr.classList.remove('sel')); };
     $('#spanel').querySelector('.plist').onclick = e => { const it = e.target.closest('.pitem[data-w]'); if (it) show(it.dataset.s, it.dataset.w); };
@@ -334,6 +337,9 @@ function drawGrid(v, cls) {
       download(`${cls.name}_${s.number}_${s.name}.csv`, toCsv(one, texts));
     };
   }
+
+  const want = sessionStorage.getItem('openStudent'); // "학생 현황 ›" from a message thread
+  if (want) { sessionStorage.removeItem('openStudent'); if (grid.students.some(s => s.id === want)) studentPanel(want); }
 
   if ($('.xsheet')) $('.xsheet').onclick = e => {
     const name = e.target.closest('[data-student]');
@@ -521,4 +527,171 @@ function drawRoster(v, cls) {
       toast(err.message);
     }
   };
+}
+
+// ---------- 💬 messages: class announcements + one thread per student ----------
+
+const QUICK = ['👍 확인했어', '📝 다시 제출해 줘', '⏰ 마감이 다가와'];
+const POLL_MS = 5000;
+let mstate = { cls: null, sel: '', inbox: null, thread: null, q: '' };
+
+function drawMsg(v, cls, sel) {
+  if (mstate.cls !== cls.id) mstate = { cls: cls.id, sel: '', inbox: store.cache('tinbox:' + cls.id), thread: null, q: '' };
+  if (mstate.sel !== sel) { mstate.sel = sel; mstate.thread = sel && sel !== 'ann' ? store.cache('tthread:' + sel) : null; }
+  const n = currentNav();
+  paintMsg(v, cls);
+  if (mstate.polling === n) return;
+  mstate.polling = n;
+  (async () => {
+    while (isCurrent(n)) {
+      try {
+        const [box, th] = await Promise.all([quiet('tInbox', { classId: cls.id }),
+          mstate.sel && mstate.sel !== 'ann' ? quiet('tThread', { studentId: mstate.sel }) : null]);
+        if (!isCurrent(n)) return;
+        const changed = JSON.stringify(box) !== JSON.stringify(mstate.inbox) || (th && JSON.stringify(th) !== JSON.stringify(mstate.thread));
+        mstate.inbox = box;
+        store.setCache('tinbox:' + cls.id, box);
+        if (th) { mstate.thread = th; store.setCache('tthread:' + mstate.sel, th); }
+        if (changed && !document.querySelector('dialog[open]')) paintMsg(v, cls);
+      } catch {} // offline: keep what is on screen and try again
+      await new Promise(r => setTimeout(r, document.hidden ? POLL_MS * 3 : POLL_MS));
+    }
+  })();
+}
+
+function paintMsg(v, cls) {
+  const nav = currentNav();
+  const typed = $('#msg') ? $('#msg').value : '';
+  const box = mstate.inbox;
+  const sel = mstate.sel;
+  const grid = v.grid;
+  // Opening a thread reads it; keep the badges in step without waiting for the next poll.
+  if (box && sel && sel !== 'ann') box.threads.forEach(t => { if (t.studentId === sel) t.unread = 0; });
+  if (box) cls.unread = box.threads.reduce((k, t) => k + t.unread, 0);
+  const titleOf = id => (grid.works.find(w => w.id === id) || {}).title;
+  const short = t => (t && t.length > 14 ? t.slice(0, 14) + '…' : t);
+  const latestAnn = box && box.anns[0];
+  const list = !box ? '<p class="muted small">불러오는 중…</p>' : `
+    <a class="cv ${sel === 'ann' ? 'on' : ''}" href="#/t/${cls.id}/msg/ann"><div class="a ann">📢</div><div class="t">
+      <b>반 공지 <small>${latestAnn ? esc(when(latestAnn.created)) : ''}</small></b>
+      <p>${latestAnn ? `${esc(latestAnn.title)} · 읽음 ${latestAnn.read}/${latestAnn.total}` : '아직 공지가 없어요'}</p></div></a>
+    ${box.threads.filter(t => !mstate.q || t.name.includes(mstate.q)).map(t => `
+      <a class="cv ${t.unread ? 'unread' : ''} ${sel === t.studentId ? 'on' : ''}" href="#/t/${cls.id}/msg/${t.studentId}"><div class="a">${t.number}</div><div class="t">
+        <b>${esc(t.name)} <small>${t.last ? esc(when(t.last.created)) : ''}</small></b>
+        <p>${t.last ? `${t.last.from === 't' ? '나: ' : ''}${t.last.assignmentId && titleOf(t.last.assignmentId) ? `📝 ${esc(short(titleOf(t.last.assignmentId)))} · ` : ''}${esc(t.last.text)}` : '<span class="muted">대화 시작하기</span>'}</p></div>
+        ${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</a>`).join('')}`;
+
+  let right;
+  if (sel === 'ann') {
+    right = `<div class="th"><div class="a ann">📢</div><div><b>반 공지</b><small>${esc([cls.name, cls.section].filter(Boolean).join(' · '))} 학생 ${grid.students.length}명에게</small></div><span class="sp"></span></div>
+      <div class="annlist">${(box ? box.anns : []).map(a => `<article class="ann ${a.pinned ? 'pin' : ''}">
+        <div class="h">${a.pinned ? '<span class="tag">📌 고정</span>' : ''}${esc(when(a.created))}<span class="sp"></span>
+          <button class="lk" data-pin="${a.id}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? '고정 해제' : '📌 고정'}</button><button class="lk del" data-del="${a.id}">삭제</button></div>
+        <b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}
+        <div class="read">읽음 <b>${a.read}/${a.total}</b><span class="rbar"><i style="width:${a.total ? Math.round(a.read / a.total * 100) : 0}%"></i></span>${a.unreadNames.length ? `안 읽음: ${esc(a.unreadNames.join(', '))}` : ''}</div>
+      </article>`).join('') || '<p class="empty">아직 공지가 없어요. 오른쪽 위 "📢 새 공지"로 반 전체에 알릴 수 있어요.</p>'}</div>`;
+  } else if (sel) {
+    const s = grid.students.find(x => x.id === sel) || (box && box.threads.find(t => t.studentId === sel)) || { name: '', number: '' };
+    const works = grid.works.filter(w => assigned(w, sel));
+    const done = works.filter(w => cellOf(grid, sel, w.id)).length;
+    const r = (v.roster || []).find(x => x.id === sel) || {};
+    right = `<div class="th"><div class="a">${esc(s.number)}</div><div><b>${esc(s.name)}</b><small>${esc(s.number)}번 · 제출 ${done}/${works.length}${r.lastSubmit ? ` · 마지막 제출 ${esc(when(r.lastSubmit))}` : ''}</small></div>
+        <span class="sp"></span><button class="btn" id="toPanel">학생 현황 ›</button></div>
+      <div class="msgs thread" id="msgs">${mstate.thread ? bubbles(mstate.thread, 't', titleOf) || '<p class="empty">아직 주고받은 메시지가 없어요.</p>' : '<p class="empty">불러오는 중…</p>'}</div>
+      <div class="quick">${QUICK.map(q => `<button type="button" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      <form class="comp" id="composer"><textarea id="msg" rows="1" placeholder="${esc(s.name)}에게 메시지… (Enter 보내기 · Shift+Enter 줄바꿈)" aria-label="메시지"></textarea><button class="btn primary">보내기</button></form>`;
+  } else {
+    right = '<div class="pickone"><div>💬</div><p>왼쪽에서 학생이나 반 공지를 골라 주세요.<br>학생이 과제 화면에서 질문하면 어떤 과제인지 꼬리표가 붙어 와요.</p></div>';
+  }
+
+  const body = `<div class="inbox ${sel ? 'has-sel' : ''}">
+      <div class="clist"><input class="search" id="msearch" type="search" placeholder="🔍 학생 검색" aria-label="학생 검색" value="${esc(mstate.q)}"><div id="cvs">${list}</div></div>
+      <div class="cpane">${right}</div>
+    </div>
+    <dialog class="sheet wide" id="annDlg"><form id="annForm">
+      <h3>📢 새 공지 쓰기</h3>
+      <label>받는 사람<select name="classId">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc([c.name, c.section].filter(Boolean).join(' · '))} 전체 (${c.students}명)</option>`).join('')}</select></label>
+      <label>제목<input name="title" required placeholder="예: 내일 수행평가 안내"></label>
+      <label>내용<textarea name="body" rows="4" placeholder="학생에게 보일 내용"></textarea></label>
+      <label class="check"><input type="checkbox" name="pinned"> 맨 위에 고정 📌 (학생 홈 화면 맨 위에도 보여요)</label>
+      <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="annGo">공지 보내기</button></div>
+    </form></dialog>`;
+  const actions = '<button class="btn primary" id="newAnn">📢 새 공지</button>';
+  const y = $('#cvs') ? $('#cvs').scrollTop : 0;
+  render(shell(v.classes, cls, 'msg', grid.students.length, body, actions));
+  bindShell();
+  $('#cvs').scrollTop = y;
+
+  $('#msearch').oninput = e => {
+    mstate.q = e.target.value.trim();
+    const pos = e.target.selectionStart;
+    paintMsg(v, cls);
+    $('#msearch').focus();
+    $('#msearch').setSelectionRange(pos, pos);
+  };
+  const annForm = $('#annForm');
+  const goLabel = () => { const o = annForm.classId.selectedOptions[0]; $('#annGo').textContent = `${(/\((\d+)명\)/.exec(o.text) || [])[1] || ''}명에게 공지 보내기`; };
+  annForm.classId.onchange = goLabel;
+  goLabel();
+  $('#newAnn').onclick = () => $('#annDlg').showModal();
+  annForm.onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(annForm);
+    const btn = $('#annGo');
+    btn.disabled = true;
+    btn.textContent = '보내는 중…';
+    try {
+      await call('postAnn', { classId: f.get('classId'), title: f.get('title'), body: f.get('body'), pinned: !!f.get('pinned') });
+      $('#annDlg').close();
+      toast('공지를 보냈어요. 학생 앱의 🔔 알림과 홈 화면에 나타나요');
+      if (f.get('classId') !== cls.id) return (location.hash = `#/t/${f.get('classId')}/msg/ann`);
+      mstate.inbox = await call('tInbox', { classId: cls.id });
+      if (location.hash.endsWith('/msg/ann')) paintMsg(v, cls); else location.hash = `#/t/${cls.id}/msg/ann`;
+    } catch (err) {
+      btn.disabled = false;
+      goLabel();
+      toast(err.message);
+    }
+  };
+
+  if (sel === 'ann') {
+    $('.annlist').onclick = async e => {
+      const pin = e.target.closest('[data-pin]');
+      const del = e.target.closest('[data-del]');
+      if (!pin && !del) return;
+      if (del && !confirm('이 공지를 지울까요? 학생 화면에서도 사라져요.')) return;
+      try {
+        if (pin) await call('pinAnn', { id: pin.dataset.pin, pinned: !!pin.dataset.on });
+        else await call('delAnn', { id: del.dataset.del });
+        mstate.inbox = await call('tInbox', { classId: cls.id });
+        paintMsg(v, cls);
+      } catch (err) { toast(err.message); }
+    };
+  }
+  if (sel && sel !== 'ann') {
+    const msgs = $('#msgs');
+    msgs.scrollTop = msgs.scrollHeight;
+    $('#toPanel').onclick = () => { sessionStorage.setItem('openStudent', sel); location.hash = `#/t/${cls.id}/grid`; };
+    $('.quick').onclick = e => {
+      const b = e.target.closest('[data-quick]');
+      if (!b) return;
+      $('#msg').value = b.dataset.quick;
+      $('#msg').focus();
+    };
+    bindComposer(async text => {
+      const temp = { id: 'tmp' + Date.now(), from: 't', text, assignmentId: '', created: new Date().toISOString(), readAt: '', pending: true };
+      mstate.thread = (mstate.thread || []).concat(temp);
+      paintMsg(v, cls);
+      try {
+        Object.assign(temp, await call('tSend', { studentId: sel, text }), { pending: false });
+        mstate.inbox = await quiet('tInbox', { classId: cls.id });
+      } catch (err) {
+        mstate.thread = mstate.thread.filter(m => m !== temp);
+        toast(`보내지 못했어요. ${err.message}`);
+        if ($('#msg') && !$('#msg').value) $('#msg').value = text;
+      }
+      if (isCurrent(nav)) paintMsg(v, cls);
+    });
+    if (typed) { $('#msg').value = typed; $('#msg').oninput(); }
+  }
 }

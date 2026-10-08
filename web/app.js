@@ -3,6 +3,7 @@ import { render, fail, toast, nextNav } from './ui.js';
 import { joinFlow } from './join.js';
 import { studentHome, studentEditor } from './student.js';
 import { teacherView } from './teacher.js';
+import { studentNotify, studentChat } from './inbox.js';
 import * as outbox from './outbox.js';
 
 // The teacher link (#/teacher?key=…) is opened once; the key then stays on this device.
@@ -12,14 +13,16 @@ if (link) {
   history.replaceState(null, '', location.pathname + location.search + '#/t');
 }
 
-// Routes — teacher: #/t/{classId}/{grid|roster}; student: #/a/{assignmentId}, anything else = home.
+// Routes — teacher: #/t/{classId}/{grid|roster|msg}; student: #/a/{id}, #/notify/{tab}, #/chat[/ann|/a/{id}], anything else = home.
 async function route() {
   nextNav();
-  const [, view, a, b] = location.hash.split('/');
+  const [, view, a, b, c] = location.hash.split('/');
   try {
-    if (store.key()) return await teacherView(view === 't' ? a : '', b);
+    if (store.key()) return await teacherView(view === 't' ? a : '', b, c);
     if (!store.token()) return joinFlow();
     if (view === 'a') return await studentEditor(a);
+    if (view === 'notify') return await studentNotify(a);
+    if (view === 'chat') return await studentChat(a, b);
     return await studentHome();
   } catch (e) {
     if (e.code !== 'auth') return fail(e);
