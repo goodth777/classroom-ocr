@@ -4,7 +4,8 @@ import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
 import { esc, dDay, dueLabel } from './lib.js';
 import * as outbox from './outbox.js';
 import { homeIcons, homeNotice } from './inbox.js';
-import { pushState, prefs, enablePush, disablePush, setPrefs } from './push.js';
+import { pushState, prefs, enablePush, disablePush, setPrefs, pushToken } from './push.js';
+import { quiet } from './api.js';
 
 let me = null;
 
@@ -48,7 +49,7 @@ addEventListener('outbox', e => {
   if (state === 'ok') {
     me = me || store.cache('me');
     const a = me && me.assignments.find(x => x.id === item.assignmentId);
-    if (a) {
+    if (a && (!item.token || item.token === store.token())) {
       Object.assign(a, { state: 'TURNED_IN', updated: result.submittedAt, late: result.late, text: item.text });
       store.setCache('me', me);
     }
@@ -67,6 +68,8 @@ async function refreshMe() {
   const changed = JSON.stringify(data) !== JSON.stringify(me);
   me = data;
   store.setCache('me', data);
+  // keeps the class list in step (also fills it for phones that joined before classes could be switched)
+  store.saveClass({ token: store.token(), name: data.cls.name, section: data.cls.section, number: data.student.number, student: data.student.name });
   return changed;
 }
 
@@ -107,6 +110,35 @@ export async function studentHome() {
     return toast('연결이 잠시 끊겼어요. 마지막으로 받은 화면을 보여 드려요');
   }
   if (isCurrent(n) && changed && !document.querySelector('dialog[open]')) renderHome();
+  refreshOthers(n);
+}
+
+// Other joined classes: refresh their counts quietly so the switcher can show a dot for new notices.
+async function refreshOthers(n) {
+  const others = store.classes().filter(c => c.token !== store.token());
+  if (!others.length) return;
+  await Promise.all(others.map(c => quiet('me', { token: c.token }).then(d => store.setCacheFor(c.token, d)).catch(() => {})));
+  if (isCurrent(n) && document.querySelector('.hello') && !document.querySelector('dialog[open]')) renderHome();
+}
+
+const unreadOf = d => (d && d.inbox ? d.inbox.unread.ann + d.inbox.unread.msg : 0);
+const missOf = d => (d ? d.assignments.filter(a => a.state !== 'TURNED_IN').length : 0);
+
+function classSheet() {
+  const cur = store.token();
+  return store.classes().map(c => {
+    const d = c.token === cur ? me : store.cacheFor(c.token);
+    const sub = [c.section, c.number + '번', d ? `미제출 ${missOf(d)}` : '', c.token !== cur && unreadOf(d) ? `새 알림 ${unreadOf(d)}` : ''].filter(Boolean).join(' · ');
+    return `<button class="cls ${c.token === cur ? 'on' : ''}" data-cls="${esc(c.token)}"><span class="ic">${esc(c.name.replace(/^[\d\s]*학년\s*/, '').slice(0, 1))}</span>
+      <span class="tx"><b>${esc(c.name)}</b><small>${esc(sub)}</small></span>${c.token === cur ? '<span class="chk">✓</span>' : unreadOf(d) ? '<span class="newdot"></span>' : ''}</button>`;
+  }).join('');
+}
+
+function switchClass(token) {
+  if (token === store.token()) return $('#clsDlg').close();
+  store.setToken(token);
+  me = null;
+  studentHome().catch(e => toast(e.message));
 }
 
 function renderHome() {
@@ -126,7 +158,8 @@ function renderHome() {
   const name = me.student.name;
 
   render(`<header class="hello">
-      <button class="greet" id="profile" aria-label="내 정보"><small>${esc([me.cls.section, me.cls.name].filter(Boolean).join(' · '))}</small><strong>안녕하세요, ${esc(firstName(name))}님 <span>›</span></strong></button>
+      <div class="greet"><button class="clsbtn" id="clsBtn" aria-label="수업 바꾸기">${esc([me.cls.section, me.cls.name].filter(Boolean).join(' · '))} ▾${store.classes().some(c => c.token !== store.token() && unreadOf(store.cacheFor(c.token))) ? '<span class="newdot"></span>' : ''}</button>
+        <button class="hi" id="profile" aria-label="내 정보"><strong>안녕하세요, ${esc(firstName(name))}님 <span>›</span></strong></button></div>
       ${homeIcons(me)}
     </header>
     ${banner}${homeNotice(me)}${optinCard()}
@@ -148,6 +181,11 @@ function renderHome() {
       <p class="muted small">나가면 다음에 수업 코드와 PIN을 다시 입력해야 해요.</p>
       <form method="dialog"><button class="ghost">닫기</button></form>
     </dialog>
+    <dialog class="sheet menu bottom" id="clsDlg">
+      <h3>내 수업</h3><div class="clslist">${classSheet()}</div>
+      <a class="addcls" href="#/join">＋ 다른 수업 참여하기</a>
+      <p class="clsnote">수업마다 그 수업의 번호와 PIN으로 한 번만 참여하면 돼요</p>
+    </dialog>
     <dialog class="sheet menu" id="iosDlg">
       <h3>📲 아이폰에서 알림 받기</h3><p class="muted small">아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요 (iOS 16.4 이상).</p>
       <div class="step"><span>1</span>아래쪽 공유 버튼 <b>⬆︎</b> 누르기</div><div class="step"><span>2</span><b>홈 화면에 추가</b> 누르기</div><div class="step"><span>3</span>홈 화면의 앱을 열고 <b>알림 켜기</b></div>
@@ -155,6 +193,12 @@ function renderHome() {
     </dialog>`);
 
   $('#profile').onclick = () => $('#menu').showModal();
+  $('#clsBtn').onclick = () => $('#clsDlg').showModal();
+  $('#clsDlg').onclick = e => {
+    const b = e.target.closest('[data-cls]');
+    if (b) switchClass(b.dataset.cls);
+    else if (e.target === $('#clsDlg')) $('#clsDlg').close(); // tap outside the sheet
+  };
   document.getElementById('app').onclick = e => {
     if (document.querySelector('.hello')) pushClick(e);
     const one = e.target.closest('[data-retry]');
@@ -167,9 +211,11 @@ function renderHome() {
   };
   $('#leave').onclick = async () => {
     $('#leave').disabled = true;
-    await disablePush();
-    try { await call('leave', { token: store.token() }); } catch {} // leaving locally is enough if the server is unreachable
-    store.clearToken();
+    const others = store.classes().length > 1;
+    if (!others) await disablePush(); // other classes keep their notifications
+    try { await call('leave', { token: store.token(), pushToken: pushToken() }); } catch {} // leaving locally is enough if the server is unreachable
+    me = null;
+    if (store.clearToken()) { $('#menu').close(); return studentHome(); }
     location.hash = '#/join';
   };
 }

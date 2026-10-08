@@ -2,6 +2,7 @@ import { call } from './api.js';
 import { store } from './store.js';
 import { render, $, toast, loading } from './ui.js';
 import { esc } from './lib.js';
+import { registerClass } from './push.js';
 
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -75,16 +76,17 @@ const steps = n => `<div class="steps">${[1, 2, 3].map(i => `<i class="${i <= n 
 
 // First visit only: class code → number → PIN → device token. Afterwards the token opens the app directly.
 // code: from the QR link (#/join/CODE); remembered so the installed app (same storage on Android) picks it up.
-export function joinFlow(code = '') {
+export function joinFlow(code = '', adding = false) {
   code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   if (code.length === 6) lsSet('pendingCode', code);
   const st = { code: code.length === 6 ? code : lsGet('pendingCode') || '', number: '', name: '', cls: null, pin: '' };
 
   function stepCode() {
     render(`<section class="join">
+      ${adding ? '<a class="cancel" href="#/home">‹ 내 수업으로 돌아가기</a>' : ''}
       ${steps(1)}
       <div class="logo"></div>
-      <h1>수업 코드를<br>입력해 주세요</h1>
+      <h1>${adding ? '참여할 수업 코드를' : '수업 코드를'}<br>입력해 주세요</h1>
       <p class="lead">선생님이 칠판이나 단톡방에 알려 준<br>6자리 코드예요.</p>
       <label class="codebox">
         <input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="수업 코드">
@@ -187,7 +189,8 @@ export function joinFlow(code = '') {
       $('#pinNote').textContent = '확인 중…';
       try {
         const r = await call('join', { code: st.code, number: +st.number, pin: st.pin });
-        store.setToken(r.token);
+        store.saveClass({ token: r.token, name: r.cls.name, section: r.cls.section, number: r.student.number, student: r.student.name });
+        registerClass(r.token);
         lsSet('pendingCode', null);
         welcome(r);
       } catch (err) {
@@ -218,5 +221,5 @@ export function joinFlow(code = '') {
     loading('page');
     try { st.cls = await call('peek', { code: st.code }); stepNumber(); } catch (e) { toast(e.message); lsSet('pendingCode', null); stepCode(); }
   }
-  if (needsGate()) gate(st, start); else start();
+  if (!adding && needsGate()) gate(st, start); else start();
 }

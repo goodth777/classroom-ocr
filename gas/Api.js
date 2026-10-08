@@ -167,7 +167,10 @@ function submit_(req, who) {
 
 function leave_(req, who) {
   const h = hash_(String(req.token));
-  withLock_(() => deleteRows_('Devices', rows_('Devices').filter(d => d.tokenHash === h)));
+  withLock_(() => {
+    deleteRows_('Devices', rows_('Devices').filter(d => d.tokenHash === h));
+    if (req.pushToken) deleteRows_('PushSubs', rows_('PushSubs').filter(s => s.token === String(req.pushToken) && s.studentId === who.student.id));
+  });
   CacheService.getScriptCache().remove('tok:' + h);
   bump_(who.cls.id);
   return true;

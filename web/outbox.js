@@ -1,8 +1,9 @@
 import { call } from './api.js';
+import { store } from './store.js';
 
 // Submissions are queued on the device and sent in the background, so students never wait for the
 // server. Items survive app restarts (IndexedDB) and are resumed on the next launch or when back online.
-// item: {id, assignmentId, title, text, photos[base64], createdAt, status: 'sending'|'fail', tries}
+// item: {id, assignmentId, title, text, photos[base64], token (class it belongs to), createdAt, status: 'sending'|'fail', tries}
 
 const MAX_TRIES = 3;
 let items = [];
@@ -58,7 +59,7 @@ export async function enqueue({ assignmentId, title, text, photos }) {
   const replaced = items.filter(i => i.assignmentId === assignmentId && i !== sendingNow);
   items = items.filter(i => !replaced.includes(i));
   await Promise.all(replaced.map(i => drop(i.id)));
-  const item = { id: `${assignmentId}:${Date.now()}`, assignmentId, title, text, photos, createdAt: new Date().toISOString(), status: 'sending', tries: 0 };
+  const item = { id: `${assignmentId}:${Date.now()}`, assignmentId, title, text, photos, token: store.token(), createdAt: new Date().toISOString(), status: 'sending', tries: 0 };
   items.push(item);
   await save(item);
   flush();
@@ -88,7 +89,7 @@ export async function flush() {
       sendingNow = item;
       emit(item, 'sending');
       try {
-        const r = await call('submit', { assignmentId: item.assignmentId, text: item.text, photos: item.photos });
+        const r = await call('submit', { assignmentId: item.assignmentId, text: item.text, photos: item.photos, ...(item.token ? { token: item.token } : {}) });
         items = items.filter(i => i !== item);
         await drop(item.id);
         emit(item, 'ok', { result: r });

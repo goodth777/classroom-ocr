@@ -7,7 +7,6 @@ import * as outbox from './outbox.js';
 
 const POLL_MS = 4000;
 const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
-const BUBBLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';
 const EMPTY_INBOX = { anns: [], msgs: [], unread: { ann: 0, msg: 0 } };
 
 const inboxOf = me => me.inbox || EMPTY_INBOX;
@@ -23,10 +22,7 @@ const badge = (n, cls = '') => (n ? `<span class="n ${cls}">${n > 99 ? '99+' : n
 export function homeIcons(me) {
   const box = inboxOf(me);
   const bell = box.unread.ann + imminent(me).length + box.unread.msg;
-  return `<div class="icons">
-    <a class="ib" href="#/notify" aria-label="알림${bell ? ` ${bell}개` : ''}">${BELL}${badge(bell)}</a>
-    <a class="ib" href="#/chat" aria-label="선생님과 대화${box.unread.msg ? ` 새 메시지 ${box.unread.msg}개` : ''}">${BUBBLE}${badge(box.unread.msg, 'g')}</a>
-  </div>`;
+  return `<div class="icons"><a class="ib" href="#/notify" aria-label="알림${bell ? ` 새 알림 ${bell}개` : ''}">${BELL}${badge(bell)}</a></div>`;
 }
 
 // The newest unread announcement (pinned first) sits above the bento until it is opened.
@@ -81,7 +77,10 @@ export async function studentNotify(tab = 'ann') {
       .sort((a, b) => a.due.localeCompare(b.due));
     const tmsgs = box.msgs.filter(m => m.from === 't').reverse();
     const counts = { ann: box.unread.ann, due: imminent(me).length, msg: box.unread.msg };
-    const tabBtn = (k, label) => `<a href="#/notify/${k}" class="${tab === k ? 'on' : ''}">${label}${counts[k] ? `<i>${counts[k]}</i>` : ''}</a>`;
+    const totals = { ann: box.anns.length, due: dues.length, msg: tmsgs.length };
+    // one pill per tab: "all · new" (new in orange), just "all" when nothing is new
+    const pill = k => (totals[k] ? `<i>${totals[k]}${counts[k] ? ` · <em>${counts[k]}</em>` : ''}</i>` : '');
+    const tabBtn = (k, label) => `<a href="#/notify/${k}" class="${tab === k ? 'on' : ''}" aria-label="${label} ${totals[k]}개${counts[k] ? `, 새 ${counts[k]}개` : ''}">${label}${pill(k)}</a>`;
     const row = (href, unread, title, sub, right) => `<a class="nrow ${unread ? 'unread' : ''}" href="${href}"><span class="dot"></span>
       <div class="tx"><b>${title}</b>${sub ? `<p>${esc(sub)}</p>` : ''}</div>${right}</a>`;
     const rows = {
@@ -96,7 +95,8 @@ export async function studentNotify(tab = 'ann') {
     render(`<header class="topbar"><a href="#/home" class="iconbtn" aria-label="뒤로">‹</a><div class="t"><b>알림</b></div>
         ${counts.ann || counts.msg ? '<button class="linkbtn" id="allRead">모두 읽음</button>' : ''}</header>
       <nav class="tabs3">${tabBtn('ann', '공지')}${tabBtn('due', '임박')}${tabBtn('msg', '메시지')}</nav>
-      <div class="nlist">${rows.join('') || `<p class="empty">${empty}</p>`}</div>`);
+      <div class="nlist">${rows.join('') || `<p class="empty">${empty}</p>`}</div>
+      ${tab === 'msg' ? '<a class="openchat" href="#/chat">💬 선생님과 대화하기</a>' : ''}`);
     const all = $('#allRead');
     if (all) all.onclick = async () => { await Promise.all([markAnnsRead(me), markMsgsRead(me)]); draw(); };
   }

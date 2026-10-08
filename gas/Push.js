@@ -78,7 +78,8 @@ function savePushSub_(req, row) {
   const token = String(req.pushToken || '');
   if (!token || token.length > 4096) throw err_('알림을 켜지 못했어요. 다시 시도해 주세요.');
   withLock_(() => {
-    deleteRows_('PushSubs', rows_('PushSubs').filter(s => s.token === token));
+    // one phone may follow several classes: one row per (phone, student)
+    deleteRows_('PushSubs', rows_('PushSubs').filter(s => s.token === token && s.role === row.role && s.studentId === row.studentId));
     append_('PushSubs', Object.assign({ token: token, prefs: cleanPrefs_(req.prefs), created: now_() }, row));
   });
   return true;

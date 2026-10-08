@@ -1,5 +1,6 @@
 // Web push on/off for this device. Firebase is only loaded when the user turns push on.
 import { call } from './api.js';
+import { store } from './store.js';
 import { FIREBASE, VAPID_KEY } from './config.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
@@ -30,15 +31,23 @@ export async function enablePush(role, p = prefs()) {
   if (await Notification.requestPermission() !== 'granted') throw new Error('알림이 허용되지 않았어요. 휴대폰 설정에서 이 앱의 알림을 허용해 주세요.');
   const { m, msg } = await messaging();
   const token = await m.getToken(msg, { vapidKey: VAPID_KEY, serviceWorkerRegistration: await navigator.serviceWorker.ready });
-  await call(role === 'teacher' ? 'tPushSub' : 'pushSub', { pushToken: token, prefs: p });
+  if (role === 'teacher') await call('tPushSub', { pushToken: token, prefs: p });
+  else await Promise.all(store.classes().map(c => call('pushSub', { token: c.token, pushToken: token, prefs: p })));
   put('pushToken', token);
   put('pushPrefs', JSON.stringify(p));
 }
 
 export async function setPrefs(p) {
   put('pushPrefs', JSON.stringify(p));
-  if (get('pushToken')) await call('pushSub', { pushToken: get('pushToken'), prefs: p });
+  if (get('pushToken')) await Promise.all(store.classes().map(c => call('pushSub', { token: c.token, pushToken: get('pushToken'), prefs: p })));
 }
+
+// A class joined while push is on gets notifications too.
+export async function registerClass(classToken) {
+  if (pushState() !== 'on') return;
+  try { await call('pushSub', { token: classToken, pushToken: get('pushToken'), prefs: prefs() }); } catch {}
+}
+export const pushToken = () => get('pushToken');
 
 export async function disablePush() {
   const token = get('pushToken');
