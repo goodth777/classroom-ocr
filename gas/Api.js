@@ -21,6 +21,7 @@ function doPost(e) {
     const req = JSON.parse(e.postData.contents);
     const route = ROUTES_[req.action];
     if (!route) throw err_('알 수 없는 요청이에요.');
+    ensureSchema_();
     let who = null;
     if (route.auth === 'student') who = student_(req.token);
     if (route.auth === 'teacher') teacher_(req.key);
@@ -45,11 +46,19 @@ function teacher_(key) {
 function student_(token) {
   if (!token) throw err_('다시 참여해 주세요.', 'auth');
   const h = hash_(String(token));
-  const dev = rows_('Devices').find(d => d.tokenHash === h);
-  const st = dev && rows_('Students').find(s => s.id === dev.studentId);
-  const cls = st && rows_('Classes').find(c => c.id === st.classId);
-  if (!cls) throw err_('다시 참여해 주세요. 선생님이 PIN을 새로 발급했을 수 있어요.', 'auth');
-  return { student: st, cls: cls };
+  const find = () => {
+    const dev = rows_('Devices').find(d => d.tokenHash === h);
+    const st = dev && rows_('Students').find(s => s.id === dev.studentId);
+    const cls = st && rows_('Classes').find(c => c.id === st.classId);
+    return cls ? { student: st, cls: cls } : null;
+  };
+  let who = find();
+  if (!who) { // the minute-long cache may predate a fresh join: check the sheet itself before refusing
+    ['Devices', 'Students', 'Classes'].forEach(dirty_);
+    who = find();
+  }
+  if (!who) throw err_('다시 참여해 주세요. 선생님이 PIN을 새로 발급했을 수 있어요.', 'auth');
+  return who;
 }
 
 const classByCode_ = code => rows_('Classes').find(c => c.code === String(code || '').trim().toUpperCase());
@@ -93,7 +102,7 @@ function join_(req) {
 function me_(req, who) {
   const mine = {};
   rows_('Submissions').filter(s => s.studentId === who.student.id).forEach(s => { mine[s.assignmentId] = s; });
-  const assignments = rows_('Assignments').filter(a => a.classId === who.cls.id).map(a => {
+  const assignments = rows_('Assignments').filter(a => a.classId === who.cls.id && isTarget(a, who.student.id)).map(a => {
     const s = mine[a.id];
     return { id: a.id, title: a.title, description: a.description, due: a.due, created: a.created,
       state: s ? 'TURNED_IN' : 'NEW', updated: s ? s.submittedAt : '', late: !!(s && s.late), text: s ? s.text : '' };
@@ -123,7 +132,7 @@ function folder_(parent, name) {
 }
 
 function submit_(req, who) {
-  const a = rows_('Assignments').find(x => x.id === req.assignmentId && x.classId === who.cls.id);
+  const a = rows_('Assignments').find(x => x.id === req.assignmentId && x.classId === who.cls.id && isTarget(x, who.student.id));
   if (!a) throw err_('과제를 찾을 수 없어요.', 'notfound');
   const text = String(req.text || '').trim();
   const photos = (req.photos || []).slice(0, MAX_PHOTOS_);
@@ -245,11 +254,39 @@ function createAssignment_(req) {
   if (!title) throw err_('과제 제목을 입력해 주세요.');
   if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('반을 찾을 수 없어요.', 'notfound');
   const due = /^\d{4}-\d{2}-\d{2}$/.test(req.due || '') ? req.due : '';
+  const studentIds = targetIds_(req.classId, req.studentIds);
   return withLock_(() => {
-    const a = { id: newId_(), classId: req.classId, title: title, description: String(req.description || '').trim(), due: due, created: now_() };
+    const a = { id: newId_(), classId: req.classId, title: title, description: String(req.description || '').trim(), due: due, created: now_(), studentIds: studentIds };
     append_('Assignments', a);
     return a.id;
   });
+}
+
+// null/empty = whole class; otherwise only ids that really belong to the class are kept.
+function targetIds_(classId, ids) {
+  if (!ids || !ids.length) return '';
+  const mine = new Set(rows_('Students').filter(s => s.classId === classId).map(s => s.id));
+  const keep = ids.filter(id => mine.has(id));
+  if (!keep.length) throw err_('과제를 받을 학생을 한 명 이상 골라 주세요.');
+  return keep.join(',');
+}
+
+function updateTargets_(req) {
+  return withLock_(() => {
+    const a = rows_('Assignments').find(x => x.id === req.assignmentId);
+    if (!a) throw err_('과제를 찾을 수 없어요.', 'notfound');
+    a.studentIds = targetIds_(a.classId, req.studentIds);
+    update_('Assignments', a._row, a);
+    return targetsOf(a);
+  });
+}
+
+// Everything the teacher screen needs for one class, in a single round trip.
+function view_(req) {
+  const classes = classes_();
+  const cls = classes.find(c => c.id === req.classId) || classes[0];
+  if (!cls) return { classes: classes, classId: null };
+  return { classes: classes, classId: cls.id, grid: grid_({ classId: cls.id }), roster: roster_({ classId: cls.id }) };
 }
 
 const sheetUrl_ = () => db_().getUrl();
@@ -270,6 +307,8 @@ const ROUTES_ = {
   grid: { auth: 'teacher', fn: grid_ },
   photos: { auth: 'teacher', fn: photos_ },
   createAssignment: { auth: 'teacher', fn: createAssignment_ },
+  updateTargets: { auth: 'teacher', fn: updateTargets_ },
+  view: { auth: 'teacher', fn: view_ },
   sheetUrl: { auth: 'teacher', fn: sheetUrl_ },
 };
 

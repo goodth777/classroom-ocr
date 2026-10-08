@@ -3,6 +3,9 @@ export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ENT[c]);
 
 export const DONE = new Set(['TURNED_IN', 'RETURNED']);
 
+// works[].targets: null = whole class, else the student ids the assignment was given to.
+export const assigned = (w, sid) => !w.targets || w.targets.includes(sid);
+
 const LABEL = { TURNED_IN: '제출', RETURNED: '반환됨', RECLAIMED_BY_STUDENT: '회수함' };
 export const stateLabel = cell => LABEL[cell && cell.state] || '미제출';
 
@@ -19,6 +22,7 @@ export function summarize(grid, now = Date.now()) {
     const row = grid.cells[s.id] || {};
     let miss = 0;
     grid.works.forEach(w => {
+      if (!assigned(w, s.id)) return;
       const c = row[w.id];
       const existed = w.created && Date.parse(w.created) <= weekAgo;
       if (existed) prevTotal++;
@@ -30,7 +34,7 @@ export function summarize(grid, now = Date.now()) {
     });
     if (miss) missing.push({ name: s.name, miss });
   });
-  const total = grid.students.length * grid.works.length;
+  const total = grid.students.reduce((n, s) => n + grid.works.filter(w => assigned(w, s.id)).length, 0);
   const rate = total ? Math.round((done / total) * 100) : 0;
   missing.sort((a, b) => b.miss - a.miss);
   recent.sort((a, b) => b.updated.localeCompare(a.updated));
@@ -63,7 +67,7 @@ export function toCsv(grid, texts) {
     ['학생', ...grid.works.map(w => w.title)],
     ...grid.students.map(s => [
       s.name,
-      ...grid.works.map(w => (texts[s.id] || {})[w.id] ?? stateLabel((grid.cells[s.id] || {})[w.id])),
+      ...grid.works.map(w => (!assigned(w, s.id) ? '–' : (texts[s.id] || {})[w.id] ?? stateLabel((grid.cells[s.id] || {})[w.id]))),
     ]),
   ];
   return '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n');
