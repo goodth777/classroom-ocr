@@ -1,6 +1,7 @@
 import { call } from './api.js';
+import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
-import { esc, DONE, summarize, toCsv, dDay, dueLabel, parseRoster } from './lib.js';
+import { esc, DONE, assigned, summarize, toCsv, dDay, dueLabel, parseRoster } from './lib.js';
 
 const kst = iso => new Date(Date.parse(iso) + 9 * 36e5);
 const when = iso => {
@@ -10,10 +11,10 @@ const when = iso => {
     ? d.toISOString().slice(11, 16)
     : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 };
+const stamp = iso => { const d = kst(iso); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${d.toISOString().slice(11, 16)}`; };
 const shortDue = due => (due ? `${+due.slice(5, 7)}.${+due.slice(8)} 마감` : '마감일 없음');
 const weekLater = () => new Date(Date.now() + 9 * 36e5 + 7 * 864e5).toISOString().slice(0, 10);
 const cellOf = (grid, sid, wid) => (grid.cells[sid] || {})[wid];
-const dotFor = c => (!c ? ['no', ''] : c.late ? ['late', '!'] : ['ok', '✓']);
 
 function download(name, text) {
   const a = document.createElement('a');
@@ -29,12 +30,45 @@ function bindEsc() {
   escBound = true;
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
-    document.getElementById('drawer')?.classList.remove('open');
+    document.querySelectorAll('.drawer.open').forEach(d => d.classList.remove('open'));
     document.getElementById('board')?.setAttribute('hidden', '');
   });
 }
 
-// Shell shared by both tabs: class sidebar, header with tabs, dialogs for a new class.
+// ---------- loading: draw the last known view at once, refresh in the background ----------
+
+const busyUI = () => document.querySelector('dialog[open], .drawer.open, .board:not([hidden])');
+
+export async function teacherView(classId, tab) {
+  const n = currentNav();
+  const key = 'view:' + (classId || '');
+  const old = store.cache(key);
+  if (old && old.classId) draw(old, tab); else loading('teacher');
+  let v;
+  try {
+    v = await call('view', { classId });
+  } catch (e) {
+    if (!old || e.code === 'auth') throw e;
+    return toast('연결이 잠시 끊겼어요. 마지막으로 받은 화면을 보여 드려요');
+  }
+  if (!isCurrent(n)) return;
+  store.setCache('view:' + (v.classId || ''), v);
+  store.setCache('view:', v);
+  if (!v.classId) return drawEmpty(v);
+  if (classId !== v.classId) return location.replace(`#/t/${v.classId}/${tab || 'grid'}`);
+  if (JSON.stringify(v) !== JSON.stringify(old) && !busyUI()) draw(v, tab);
+}
+
+const reload = (cls, tab) => teacherView(cls.id, tab).catch(e => toast(e.message));
+
+function draw(v, tab) {
+  bindEsc();
+  const cls = v.classes.find(c => c.id === v.classId);
+  return tab === 'roster' ? drawRoster(v, cls) : drawGrid(v, cls);
+}
+
+// ---------- shell: class sidebar + header with tabs ----------
+
 function shell(classes, cls, tab, students, body, actions) {
   return `<div class="t-layout">
     <aside class="side">
@@ -48,7 +82,7 @@ function shell(classes, cls, tab, students, body, actions) {
     <main class="tmain">
       ${cls ? `<div class="thead">
         <h1>${esc(cls.name)}</h1><span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
-        <nav class="tabs"><a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">학생 명단</a></nav>
+        <nav class="tabs"><a class="${tab !== 'roster' ? 'on' : ''}" href="#/t/${cls.id}/grid">과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">학생 명단</a></nav>
         <span class="sp"></span>${actions}
       </div>` : ''}
       ${body}
@@ -75,6 +109,7 @@ function bindShell() {
     const f = new FormData(e.target);
     const btn = e.target.querySelector('.primary');
     btn.disabled = true;
+    btn.textContent = '만드는 중…';
     try {
       const c = await call('createClass', { name: f.get('name'), section: f.get('section'), subject: f.get('subject') });
       $('#classDlg').close();
@@ -82,44 +117,93 @@ function bindShell() {
       location.hash = `#/t/${c.id}/roster`;
     } catch (err) {
       btn.disabled = false;
+      btn.textContent = '만들기';
       toast(err.message);
     }
   };
 }
 
-export async function teacherView(classId, tab) {
-  const n = currentNav();
-  loading('teacher');
-  const classes = await call('classes');
-  if (!isCurrent(n)) return;
-  if (!classes.length) {
-    render(shell(classes, null, 'grid', 0, `<section class="center"><div class="hero-card">
-      <div class="logo"></div><h1>첫 반을 만들어 주세요</h1>
-      <p class="muted">반을 만들고 학생 명단을 붙여 넣으면,<br>학생이 수업 코드와 PIN으로 참여할 수 있어요.</p>
-      <button class="btn primary" id="firstClass">＋ 새 반 만들기</button></div></section>`, ''));
-    bindShell();
-    $('#firstClass').onclick = () => $('#classDlg').showModal();
-    return;
-  }
-  const cls = classes.find(c => c.id === classId);
-  if (!cls) return location.replace(`#/t/${classes[0].id}/grid`);
-  bindEsc();
-  return tab === 'roster' ? rosterTab(classes, cls, n) : gridTab(classes, cls, n);
+function drawEmpty(v) {
+  render(shell(v.classes, null, 'grid', 0, `<section class="center"><div class="hero-card">
+    <div class="logo"></div><h1>첫 반을 만들어 주세요</h1>
+    <p class="muted">반을 만들고 학생 명단을 붙여 넣으면,<br>학생이 수업 코드와 PIN으로 참여할 수 있어요.</p>
+    <button class="btn primary" id="firstClass">＋ 새 반 만들기</button></div></section>`, ''));
+  bindShell();
+  $('#firstClass').onclick = () => $('#classDlg').showModal();
 }
 
-// ---------- 과제 현황 ----------
+// ---------- target picker (new assignment, change targets) ----------
 
-async function gridTab(classes, cls, n) {
-  const grid = await call('grid', { classId: cls.id });
-  if (!isCurrent(n)) return;
+function pickerHtml(students, chosen, all) {
+  return `<div class="f"><span>대상</span><div class="seg2" data-seg>
+      <button type="button" data-all="1" class="${all ? 'on' : ''}">반 전체 (${students.length}명)</button>
+      <button type="button" data-all="0" class="${all ? '' : 'on'}">일부 학생 선택</button></div></div>
+    <div class="who" data-who ${all ? 'hidden' : ''}>
+      <div class="whohead"><b data-count></b><span class="sp"></span>
+        <button type="button" data-q="miss">미제출 있는 학생</button><button type="button" data-q="all">모두 선택</button><button type="button" data-q="none">선택 해제</button></div>
+      <div class="people">${students.map(s => `<button type="button" class="p ${chosen.has(s.id) ? 'on' : ''}" data-id="${s.id}"><i>✓</i>${s.number} ${esc(s.name)}</button>`).join('')}</div>
+    </div>`;
+}
+
+// Returns get() → null for the whole class, or the chosen student ids; onChange(count|null) updates the submit label.
+function bindPicker(root, students, missIds, onChange) {
+  let all = root.querySelector('[data-seg] .on').dataset.all === '1';
+  const chosen = () => [...root.querySelectorAll('.p.on')].map(b => b.dataset.id);
+  const paint = () => {
+    root.querySelector('[data-who]').hidden = all;
+    root.querySelectorAll('[data-seg] button').forEach(b => b.classList.toggle('on', (b.dataset.all === '1') === all));
+    root.querySelector('[data-count]').textContent = `${chosen().length}명 선택됨`;
+    onChange(all ? null : chosen().length);
+  };
+  root.onclick = e => {
+    const seg = e.target.closest('[data-seg] button');
+    const p = e.target.closest('.p');
+    const q = e.target.closest('[data-q]');
+    if (seg) all = seg.dataset.all === '1';
+    else if (p) p.classList.toggle('on');
+    else if (q) root.querySelectorAll('.p').forEach(b => b.classList.toggle('on', q.dataset.q === 'all' || (q.dataset.q === 'miss' && missIds.has(b.dataset.id))));
+    else return;
+    paint();
+  };
+  paint();
+  return () => (all ? null : chosen());
+}
+
+// ---------- 과제 현황: spreadsheet ----------
+
+let sortBy = 'num';
+let query = '';
+
+function drawGrid(v, cls) {
+  const grid = v.grid;
   const sum = summarize(grid);
-  const doneOf = sid => grid.works.filter(w => DONE.has((cellOf(grid, sid, w.id) || {}).state)).length;
+  const missOf = sid => grid.works.filter(w => assigned(w, sid) && !cellOf(grid, sid, w.id)).length;
+  const doneOf = sid => grid.works.filter(w => assigned(w, sid) && DONE.has((cellOf(grid, sid, w.id) || {}).state)).length;
+  const dueOf = sid => grid.works.filter(w => assigned(w, sid)).length;
+  const workStats = w => {
+    const who = grid.students.filter(s => assigned(w, s.id));
+    return { n: who.length, done: who.filter(s => cellOf(grid, s.id, w.id)).length };
+  };
   const next = grid.works.filter(w => w.due && dDay(w.due) >= 0).sort((a, b) => a.due.localeCompare(b.due))[0];
-  const nextRate = next && grid.students.length
-    ? Math.round(grid.students.filter(s => cellOf(grid, s.id, next.id)).length / grid.students.length * 100) : 0;
+  const ns = next && workStats(next);
   const li = (a, b) => `<li><span>${esc(a)}</span><span>${esc(b)}</span></li>`;
   const deltaHtml = sum.delta == null ? '' : sum.delta >= 0
     ? `<br>지난주보다 <span class="up">+${sum.delta}%p</span>` : `<br>지난주보다 <span class="down">${sum.delta}%p</span>`;
+  const missIds = new Set(grid.students.filter(s => missOf(s.id)).map(s => s.id));
+
+  const cell = (s, w) => {
+    if (!assigned(w, s.id)) return '<td class="na" title="대상 아님">–</td>';
+    const c = cellOf(grid, s.id, w.id);
+    if (!c) return `<td class="c" data-s="${s.id}" data-w="${w.id}"><span class="s no"><b>미제출</b></span></td>`;
+    return `<td class="c" data-s="${s.id}" data-w="${w.id}"><span class="s ${c.late ? 'late' : 'ok'}"><b>${c.late ? '지각' : '제출'}</b><span>${esc(stamp(c.updated))}</span></span></td>`;
+  };
+  const rows = () => {
+    const list = grid.students.filter(s => !query || s.name.includes(query));
+    if (sortBy === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    else if (sortBy === 'miss') list.sort((a, b) => missOf(b.id) - missOf(a.id) || a.number - b.number);
+    return list.map(s => `<tr data-row="${s.id}"><td class="rownum">${s.number}</td><td class="namecol" data-student="${s.id}">${esc(s.name)}<span class="open">현황 ›</span></td>
+      ${grid.works.map(w => cell(s, w)).join('')}<td class="sum"><b>${doneOf(s.id)}</b>/${dueOf(s.id)}</td></tr>`).join('');
+  };
 
   const body = `
     <section class="t-bento">
@@ -134,58 +218,79 @@ async function gridTab(classes, cls, n) {
         <ul class="mini">${sum.recent.slice(0, 3).map(r => li(r.student, `${r.work} · ${when(r.updated)}`)).join('') || '<li><span class="muted">아직 없어요</span></li>'}</ul></div>
       <div class="tile"><div class="k">다음 마감 <span>${next ? esc(next.title) : ''}</span></div>
         ${next ? `<div class="big">${dDay(next.due) === 0 ? 'D-day' : `D-${dDay(next.due)}`}<small>${esc(dueLabel(next.due))}</small></div>
-        <div class="mbar" title="제출 ${nextRate}%"><i style="width:${nextRate}%"></i></div>` : '<div class="big">–</div>'}</div>
+        <div class="mbar" title="제출 ${ns.done}/${ns.n}"><i style="width:${ns.n ? Math.round(ns.done / ns.n * 100) : 0}%"></i></div>` : '<div class="big">–</div>'}</div>
     </section>
-    <section class="gridcard">
-      <div class="gh"><h2>학생별 과제</h2>
-        <div class="legend"><span><i style="background:var(--accent)"></i>제출</span><span><i style="background:var(--warn)"></i>지각</span><span><i class="dashed"></i>미제출</span></div>
-        <span class="sp"></span><input class="search" id="search" type="search" placeholder="🔍 학생 검색" aria-label="학생 검색"></div>
-      ${grid.works.length ? `<div class="table-wrap"><table>
-        <thead><tr><th>학생</th>${grid.works.map(w => `<th>${esc(w.title)}<small>${esc(shortDue(w.due))}</small></th>`).join('')}<th>제출</th></tr></thead>
-        <tbody>${grid.students.map(s => `<tr data-name="${esc(s.name)}"><td><div class="name"><span class="num">${s.number}</span>${esc(s.name)}</div></td>${grid.works.map(w => {
-          const c = cellOf(grid, s.id, w.id);
-          const [cls2, mark] = dotFor(c);
-          return `<td><button class="dot ${cls2}" data-s="${s.id}" data-w="${w.id}" ${c ? '' : 'disabled'}
-            aria-label="${esc(`${s.name} ${w.title} ${!c ? '미제출' : c.late ? '지각 제출' : '제출'}`)}">${mark}</button></td>`;
-        }).join('')}<td class="cnt">${doneOf(s.id)}/${grid.works.length}</td></tr>`).join('')}</tbody>
-      </table></div>` : '<p class="empty">아직 낸 과제가 없어요. 오른쪽 위 "＋ 새 과제"로 첫 과제를 내 보세요.</p>'}
-    </section>
+    <div class="toolbar">
+      <input class="search" id="search" type="search" placeholder="🔍 학생 검색" aria-label="학생 검색" value="${esc(query)}">
+      <div class="seg2 small" id="sort">${[['num', '번호순'], ['name', '이름순'], ['miss', '미제출 많은 순']].map(([k, t]) => `<button type="button" data-sort="${k}" class="${sortBy === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="legend"><span><b class="lg ok">제출</b></span><span><b class="lg late">지각</b></span><span><b class="lg no">미제출</b></span><span>▨ 대상 아님</span></div>
+    </div>
+    ${grid.works.length ? `<div class="sheetwrap"><table class="xsheet">
+      <thead><tr><th class="rownum">#</th><th class="namecol">학생</th>${grid.works.map(w => {
+        const st = workStats(w);
+        return `<th><button class="wt" data-work="${w.id}" title="눌러서 대상 바꾸기">${esc(w.title)}${w.targets ? ` <span class="tgt">${w.targets.length}명 대상</span>` : ''}</button>
+          <small>${esc(shortDue(w.due))} · 제출 ${st.done}/${st.n}</small><span class="rate"><i style="width:${st.n ? Math.round(st.done / st.n * 100) : 0}%"></i></span></th>`;
+      }).join('')}<th class="sumh">제출</th></tr></thead>
+      <tbody id="rows">${rows()}</tbody>
+    </table></div>` : '<section class="gridcard"><p class="empty">아직 낸 과제가 없어요. 오른쪽 위 "＋ 새 과제"로 첫 과제를 내 보세요.</p></section>'}
     <aside class="drawer" id="drawer" aria-label="제출 내용">
-      <div class="dh"><span class="av" id="dAv"></span><div><b id="dTitle"></b><span id="dSub"></span></div><button class="x" id="dClose" aria-label="닫기">✕</button></div>
+      <div class="dh"><span class="av" id="dAv"></span><div><b id="dTitle"></b><span id="dSub"></span></div><button class="x" data-shut aria-label="닫기">✕</button></div>
       <div class="photos" id="dPhotos"></div>
       <pre class="txt" id="dText"></pre>
       <div class="acts"><button class="btn" id="dNext">다음 학생 →</button></div>
     </aside>
+    <aside class="drawer spanel" id="spanel" aria-label="학생 현황"></aside>
     <dialog class="phdlg" id="phDlg"><img id="phBig" alt="제출 사진"><form method="dialog"><button class="btn">닫기</button></form></dialog>
-    <dialog class="sheet" id="newDlg"><form id="newForm">
+    <dialog class="sheet wide" id="newDlg"><form id="newForm">
       <h3>새 과제 만들기</h3>
       <label>제목<input name="title" required placeholder="예: 3회차 독해 활동"></label>
-      <label>안내<textarea name="description" rows="3" placeholder="학생에게 보일 안내 (선택)"></textarea></label>
+      <label>안내<textarea name="description" rows="2" placeholder="학생에게 보일 안내 (선택)"></textarea></label>
       <div class="row2">
         <label>마감일<input type="date" name="due" value="${weekLater()}"></label>
-        <label>반<select name="classId">${classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <label>반<select name="classId" id="newClass">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       </div>
-      <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="create">과제 내기</button></div>
+      <div id="newPick">${pickerHtml(grid.students, new Set(), true)}</div>
+      <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="create">반 전체에게 과제 내기</button></div>
+    </form></dialog>
+    <dialog class="sheet wide" id="tgtDlg"><form id="tgtForm">
+      <h3 id="tgtTitle"></h3><p class="muted small">이미 제출한 학생의 제출물은 대상에서 빼도 지워지지 않아요.</p>
+      <div id="tgtPick"></div>
+      <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="tgtGo">저장</button></div>
     </form></dialog>`;
   const actions = '<button class="btn" id="csv">⬇ CSV 내려받기</button><button class="btn primary" id="new">＋ 새 과제</button>';
-  render(shell(classes, cls, 'grid', grid.students.length, body, actions));
+  render(shell(v.classes, cls, 'grid', grid.students.length, body, actions));
   bindShell();
+
+  // toolbar
+  $('#search').oninput = e => { query = e.target.value.trim(); if ($('#rows')) $('#rows').innerHTML = rows(); };
+  $('#sort').onclick = e => {
+    const b = e.target.closest('[data-sort]');
+    if (!b) return;
+    sortBy = b.dataset.sort;
+    $('#sort').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    if ($('#rows')) $('#rows').innerHTML = rows();
+  };
 
   // submission drawer
   const drawer = $('#drawer');
   let open = null;
   let token = 0;
-  const nextWith = (sid, wid) => grid.students.slice(grid.students.findIndex(x => x.id === sid) + 1).find(x => cellOf(grid, x.id, wid));
+  const nextWith = (sid, wid) => {
+    const order = [...document.querySelectorAll('#rows tr')].map(tr => tr.dataset.row);
+    return order.slice(order.indexOf(sid) + 1).find(id => cellOf(grid, id, wid));
+  };
   async function show(sid, wid) {
     const s = grid.students.find(x => x.id === sid);
     const w = grid.works.find(x => x.id === wid);
     const c = cellOf(grid, sid, wid);
+    if (!c) return;
     open = { sid, wid };
+    $('#spanel').classList.remove('open');
     $('#dAv').textContent = s.number;
     $('#dTitle').textContent = `${s.name} · ${w.title}`;
-    $('#dSub').textContent = `${when(c.updated)} 제출${c.late ? ' · 지각' : ''}${c.photos ? ` · 사진 ${c.photos}장` : ''}`;
+    $('#dSub').textContent = `${stamp(c.updated)} 제출${c.late ? ' · 지각' : ''}${c.photos ? ` · 사진 ${c.photos}장` : ''}`;
     $('#dText').textContent = c.text;
-    $('#dPhotos').innerHTML = c.photos ? '<div class="sk" style="width:130px;height:170px"></div>'.repeat(c.photos) : '';
+    $('#dPhotos').innerHTML = c.photos ? '<div class="sk" style="width:130px;height:170px;flex:none"></div>'.repeat(c.photos) : '';
     $('#dNext').disabled = !nextWith(sid, wid);
     drawer.classList.add('open');
     if (!c.photos) return;
@@ -195,50 +300,124 @@ async function gridTab(classes, cls, n) {
     $('#dPhotos').innerHTML = photos.filter(p => p.startsWith('data:image/')).map((p, i) => `<img src="${esc(p)}" alt="제출 사진 ${i + 1}">`).join('')
       || '<p class="muted small">사진을 불러오지 못했어요.</p>';
   }
-  if ($('table')) $('table').onclick = e => { const b = e.target.closest('button.dot'); if (b && !b.disabled) show(b.dataset.s, b.dataset.w); };
-  $('#dClose').onclick = () => { drawer.classList.remove('open'); token++; };
-  $('#dNext').onclick = () => { const nx = open && nextWith(open.sid, open.wid); if (nx) show(nx.id, open.wid); };
+  $('#dNext').onclick = () => { const nx = open && nextWith(open.sid, open.wid); if (nx) show(nx, open.wid); };
   $('#dPhotos').onclick = e => { if (e.target.tagName === 'IMG') { $('#phBig').src = e.target.src; $('#phDlg').showModal(); } };
+  document.querySelectorAll('[data-shut]').forEach(b => { b.onclick = () => { b.closest('.drawer').classList.remove('open'); token++; }; });
 
-  $('#search').oninput = e => {
-    const q = e.target.value.trim();
-    document.querySelectorAll('tbody tr').forEach(tr => { tr.hidden = !!q && !tr.dataset.name.includes(q); });
+  // student panel
+  function studentPanel(sid) {
+    const s = grid.students.find(x => x.id === sid);
+    const r = (v.roster || []).find(x => x.id === sid) || {};
+    const works = grid.works.filter(w => assigned(w, sid));
+    const late = works.filter(w => (cellOf(grid, sid, w.id) || {}).late).length;
+    drawer.classList.remove('open');
+    document.querySelectorAll('#rows tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.row === sid));
+    $('#spanel').innerHTML = `
+      <div class="dh"><span class="av big2">${s.number}</span><div><b>${esc(s.name)}</b><span>${esc([cls.name, cls.section, s.number + '번'].filter(Boolean).join(' · '))}${r.lastSubmit ? ` · 마지막 제출 ${esc(when(r.lastSubmit))}` : ''}</span></div><button class="x" data-shut aria-label="닫기">✕</button></div>
+      <div class="pstats"><div><small>제출</small><b class="a">${doneOf(sid)}</b>/${works.length}</div><div><small>미제출</small><b class="w">${missOf(sid)}</b></div><div><small>지각</small><b>${late}</b></div></div>
+      <div class="plist">${works.map(w => {
+        const c = cellOf(grid, sid, w.id);
+        return c
+          ? `<button class="pitem" data-s="${sid}" data-w="${w.id}"><div class="r"><b>${esc(w.title)}</b><span class="pill ${c.late ? 'late' : 'ok'}">${c.late ? '지각' : '제출'}</span></div>
+              <div class="m">${esc(stamp(c.updated))} 제출${c.photos ? ` · 사진 ${c.photos}장` : ''}</div><p>${esc(c.text)}</p></button>`
+          : `<div class="pitem miss"><div class="r"><b>${esc(w.title)}</b><span class="pill no">미제출</span></div>
+              <div class="m">${w.due ? `${esc(dueLabel(w.due))} 마감 · ${dDay(w.due) >= 0 ? `D-${dDay(w.due)}` : '마감 지남'}` : '마감일 없음'}</div></div>`;
+      }).join('') || '<p class="muted small">이 학생에게 낸 과제가 없어요.</p>'}</div>
+      <div class="acts"><button class="btn" id="sCsv">⬇ 이 학생 CSV</button><button class="btn" id="sPin">PIN 보기</button></div>`;
+    $('#spanel').classList.add('open');
+    $('#spanel').querySelector('[data-shut]').onclick = () => { $('#spanel').classList.remove('open'); document.querySelectorAll('#rows tr.sel').forEach(tr => tr.classList.remove('sel')); };
+    $('#spanel').querySelector('.plist').onclick = e => { const it = e.target.closest('.pitem[data-w]'); if (it) show(it.dataset.s, it.dataset.w); };
+    $('#sPin').onclick = () => toast(r.pin ? `${s.name} 학생의 PIN은 ${r.pin}예요` : 'PIN을 불러오지 못했어요');
+    $('#sCsv').onclick = () => {
+      const one = { students: [s], works, cells: { [sid]: grid.cells[sid] || {} } };
+      const texts = { [sid]: Object.fromEntries(works.map(w => [w.id, (cellOf(grid, sid, w.id) || {}).text]).filter(x => x[1] != null)) };
+      download(`${cls.name}_${s.number}_${s.name}.csv`, toCsv(one, texts));
+    };
+  }
+
+  if ($('.xsheet')) $('.xsheet').onclick = e => {
+    const name = e.target.closest('[data-student]');
+    const c = e.target.closest('td.c');
+    const wt = e.target.closest('[data-work]');
+    if (name) studentPanel(name.dataset.student);
+    else if (c) show(c.dataset.s, c.dataset.w);
+    else if (wt) editTargets(wt.dataset.work);
   };
 
+  // CSV
   $('#csv').onclick = () => {
     const texts = {};
     grid.students.forEach(s => grid.works.forEach(w => { const c = cellOf(grid, s.id, w.id); if (c) (texts[s.id] ??= {})[w.id] = c.text; }));
     download(`${cls.name}.csv`, toCsv(grid, texts));
   };
 
+  // new assignment (targets only for this class; another class gets the whole class)
+  let pick = bindPicker($('#newPick'), grid.students, missIds, n => {
+    $('#create').textContent = n == null ? '반 전체에게 과제 내기' : `${n}명에게 과제 내기`;
+    $('#create').disabled = n === 0;
+  });
+  $('#newClass').onchange = e => {
+    const same = e.target.value === cls.id;
+    $('#newPick').hidden = !same;
+    if (!same) { $('#create').textContent = '반 전체에게 과제 내기'; $('#create').disabled = false; }
+  };
   $('#new').onclick = () => $('#newDlg').showModal();
   $('#newForm').onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(e.target);
+    const target = f.get('classId');
+    const ids = target === cls.id ? pick() : null;
+    const label = $('#create').textContent;
     $('#create').disabled = true;
+    $('#create').textContent = '내는 중…';
     try {
-      await call('createAssignment', { classId: f.get('classId'), title: f.get('title'), description: f.get('description'), due: f.get('due') });
+      await call('createAssignment', { classId: target, title: f.get('title'), description: f.get('description'), due: f.get('due'), studentIds: ids });
       $('#newDlg').close();
     } catch (err) {
       $('#create').disabled = false;
+      $('#create').textContent = label;
       return toast(err.message);
     }
-    toast('과제를 냈어요. 학생 앱에 바로 보여요');
-    if (f.get('classId') !== cls.id) location.hash = `#/t/${f.get('classId')}/grid`;
-    else teacherView(cls.id, 'grid').catch(err => toast(err.message));
+    toast(ids ? `${ids.length}명에게 과제를 냈어요` : '과제를 냈어요. 학생 앱에 바로 보여요');
+    if (target !== cls.id) location.hash = `#/t/${target}/grid`;
+    else reload(cls, 'grid');
   };
+
+  // change targets of an existing assignment
+  function editTargets(wid) {
+    const w = grid.works.find(x => x.id === wid);
+    $('#tgtTitle').textContent = `"${w.title}" 대상 바꾸기`;
+    $('#tgtPick').innerHTML = pickerHtml(grid.students, new Set(w.targets || []), !w.targets);
+    const get = bindPicker($('#tgtPick'), grid.students, missIds, n => {
+      $('#tgtGo').textContent = n == null ? '반 전체로 저장' : `${n}명으로 저장`;
+      $('#tgtGo').disabled = n === 0;
+    });
+    $('#tgtForm').onsubmit = async e => {
+      e.preventDefault();
+      $('#tgtGo').disabled = true;
+      try {
+        await call('updateTargets', { assignmentId: wid, studentIds: get() });
+        $('#tgtDlg').close();
+        toast('대상을 바꿨어요');
+        reload(cls, 'grid');
+      } catch (err) {
+        $('#tgtGo').disabled = false;
+        toast(err.message);
+      }
+    };
+    $('#tgtDlg').showModal();
+  }
 }
 
 // ---------- 학생 명단 ----------
 
-async function rosterTab(classes, cls, n) {
-  const roster = await call('roster', { classId: cls.id });
-  if (!isCurrent(n)) return;
+function drawRoster(v, cls) {
+  const roster = v.roster;
   const joined = roster.filter(s => s.joined).length;
   const body = `
     <section class="r-bento">
       <div class="tile codecard">
-        <div><div class="k">수업 코드</div><div class="code" id="code">${esc(cls.code)}</div></div>
+        <div><div class="k">수업 코드</div><div class="code">${esc(cls.code)}</div></div>
         <div class="codeacts"><button id="big">⛶ 크게 보기</button><button id="copy">⧉ 복사</button><button id="regen">↻ 새 코드</button></div>
       </div>
       <div class="tile"><div class="k">참여한 학생</div><div class="big">${joined}<small>/ ${roster.length}명</small></div>
@@ -275,7 +454,7 @@ async function rosterTab(classes, cls, n) {
       <div class="pk"><small>수업 코드</small>${esc(cls.code)}</div><div class="pk"><small>PIN</small>${esc(s.pin)}</div>
       <p>${esc(location.origin + location.pathname)}</p></div>`).join('')}</div>`;
   const actions = '<button class="btn" id="print">🖨 PIN 카드 인쇄</button><button class="btn primary" id="paste">＋ 명단 붙여넣기</button>';
-  render(shell(classes, cls, 'roster', roster.length, body, actions));
+  render(shell(v.classes, cls, 'roster', roster.length, body, actions));
   bindShell();
 
   $('#search').oninput = e => {
@@ -289,7 +468,7 @@ async function rosterTab(classes, cls, n) {
   };
   $('#regen').onclick = async () => {
     if (!confirm('새 코드를 만들면 지금 코드로는 더 이상 참여할 수 없어요. 이미 참여한 학생은 그대로예요. 바꿀까요?')) return;
-    try { cls.code = await call('newCode', { classId: cls.id }); teacherView(cls.id, 'roster'); } catch (e) { toast(e.message); }
+    try { await call('newCode', { classId: cls.id }); toast('새 수업 코드를 만들었어요'); reload(cls, 'roster'); } catch (e) { toast(e.message); }
   };
   $('#print').onclick = () => { if (!roster.length) return toast('먼저 명단을 붙여 넣어 주세요'); window.print(); };
   if ($('table')) $('table').onclick = async e => {
@@ -305,6 +484,7 @@ async function rosterTab(classes, cls, n) {
     }
     if (!confirm(`${tr.dataset.name} 학생의 PIN을 새로 만들까요? 이 학생은 새 PIN으로 다시 참여해야 해요.`)) return;
     b.disabled = true;
+    b.textContent = '만드는 중…';
     try {
       const p = await call('reissuePin', { studentId: tr.dataset.id });
       pin.dataset.pin = p;
@@ -315,6 +495,7 @@ async function rosterTab(classes, cls, n) {
       toast(`새 PIN은 ${p}예요`);
     } catch (err) { toast(err.message); }
     b.disabled = false;
+    b.textContent = '재발급';
   };
 
   $('#paste').onclick = () => $('#pasteDlg').showModal();
@@ -329,11 +510,12 @@ async function rosterTab(classes, cls, n) {
   $('#pasteForm').onsubmit = async e => {
     e.preventDefault();
     $('#pasteGo').disabled = true;
+    $('#pasteGo').textContent = '추가하는 중…';
     try {
       const r = await call('addStudents', { classId: cls.id, text: $('#pasteText').value });
       $('#pasteDlg').close();
       toast(`${r.added}명을 추가했어요`);
-      teacherView(cls.id, 'roster');
+      reload(cls, 'roster');
     } catch (err) {
       $('#pasteGo').disabled = false;
       toast(err.message);

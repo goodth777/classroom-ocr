@@ -32,4 +32,19 @@ export function makeCall({ url, auth, fetchFn = (...a) => fetch(...a), sleep = m
 }
 
 const auth = () => (store.key() ? { key: store.key() } : store.token() ? { token: store.token() } : {});
-export const call = makeCall({ url: API_URL, auth });
+const raw = makeCall({ url: API_URL, auth });
+
+// While any request is in flight (after a short grace period) the page shows a top progress bar
+// and a "동기화 중" chip, so a slow server never looks like a frozen screen.
+let pending = 0;
+let timer;
+function busy(d) {
+  pending += d;
+  clearTimeout(timer);
+  if (pending > 0) timer = setTimeout(() => document.body.classList.add('syncing'), 150);
+  else document.body.classList.remove('syncing');
+}
+export async function call(...args) {
+  busy(1);
+  try { return await raw(...args); } finally { busy(-1); }
+}

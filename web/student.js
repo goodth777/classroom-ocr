@@ -14,12 +14,13 @@ const shortDate = iso => {
 };
 const isDone = a => a.state === 'TURNED_IN';
 
-async function loadMe() {
-  const n = currentNav();
+// Fetch the latest "me"; returns true when it differs from what is on screen.
+async function refreshMe() {
   const data = await call('me');
-  if (!isCurrent(n)) return false;
+  const changed = JSON.stringify(data) !== JSON.stringify(me);
   me = data;
-  return true;
+  store.setCache('me', data);
+  return changed;
 }
 
 function taskCard(a) {
@@ -34,9 +35,23 @@ function taskCard(a) {
   </a>`;
 }
 
+// Draws at once from the last known data, then refreshes in the background and redraws only if something changed.
 export async function studentHome() {
-  loading('home');
-  if (!(await loadMe())) return;
+  const n = currentNav();
+  me = me || store.cache('me');
+  const cached = !!me;
+  if (cached) renderHome(); else loading('home');
+  let changed;
+  try {
+    changed = await refreshMe();
+  } catch (e) {
+    if (!cached || e.code === 'auth') throw e;
+    return toast('연결이 잠시 끊겼어요. 마지막으로 받은 화면을 보여 드려요');
+  }
+  if (isCurrent(n) && changed && !document.querySelector('dialog[open]')) renderHome();
+}
+
+function renderHome() {
   const list = me.assignments;
   const pending = list.filter(a => !isDone(a)).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
   const done = list.filter(isDone).sort((a, b) => b.updated.localeCompare(a.updated));
@@ -95,7 +110,9 @@ const stepRow = (state, label) => `<div class="st ${state}"><span class="d">${st
 const STATUS = { wait: '대기', run: '읽는 중', ok: '✓ 완료', fail: '다시 읽기' };
 
 export async function studentEditor(id) {
-  if (!me) { loading('page'); if (!(await loadMe())) return; }
+  const n = currentNav();
+  me = me || store.cache('me');
+  if (!me) { loading('page'); await refreshMe(); if (!isCurrent(n)) return; }
   const a = me.assignments.find(x => x.id === id);
   if (!a) throw new Error('과제를 찾을 수 없어요.');
   const draft = store.draft(a.id) || a.text || '';
@@ -301,6 +318,7 @@ export async function studentEditor(id) {
       $('#pct').textContent = '100%';
       store.clearDraft(a.id);
       Object.assign(a, { state: 'TURNED_IN', updated: r.submittedAt, late: r.late, text: body });
+      store.setCache('me', me); // home shows "제출 완료" instantly, before any refetch
       const d = new Date(r.submittedAt);
       $('#receipt').innerHTML = `<div><span>과제</span><b>${esc(a.title)}</b></div>
         <div><span>제출 시각</span><b>${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}${r.late ? ' (마감 후)' : ''}</b></div>

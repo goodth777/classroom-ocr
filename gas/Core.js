@@ -33,6 +33,16 @@ function isLate(submittedAt, due) {
   return Date.parse(submittedAt) > Date.parse(due + 'T23:59:59+09:00');
 }
 
+// An assignment with no studentIds goes to the whole class.
+function targetsOf(a) {
+  const ids = String(a.studentIds || '').split(',').filter(Boolean);
+  return ids.length ? ids : null;
+}
+function isTarget(a, studentId) {
+  const t = targetsOf(a);
+  return !t || t.indexOf(studentId) >= 0;
+}
+
 // Teacher table: students by number, assignments by creation, one cell per submission.
 function buildGrid(students, assignments, submissions) {
   const cells = {};
@@ -48,10 +58,10 @@ function buildGrid(students, assignments, submissions) {
   });
   return {
     students: students.map(s => ({ id: s.id, number: +s.number, name: s.name })).sort((a, b) => a.number - b.number),
-    works: assignments.map(a => ({ id: a.id, title: a.title, created: a.created, due: a.due || '', description: a.description || '' }))
+    works: assignments.map(a => ({ id: a.id, title: a.title, created: a.created, due: a.due || '', description: a.description || '', targets: targetsOf(a) }))
       .sort((a, b) => String(a.created).localeCompare(String(b.created))),
     cells,
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { makeCode, makePin, parseRoster, isLate, buildGrid };
+if (typeof module !== 'undefined') module.exports = { makeCode, makePin, parseRoster, isLate, buildGrid, isTarget, targetsOf };

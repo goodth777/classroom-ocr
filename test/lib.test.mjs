@@ -80,3 +80,18 @@ test('lib parseRoster matches the server copy', async () => {
   const text = '번호\t이름\n1\t강수아\n2, 김민준\n\n 3  박지호 \n3\t중복\nabc\t무시\n12\tJohn Kim';
   assert.deepStrictEqual(parseRoster(text), core.parseRoster(text));
 });
+
+test('summarize and toCsv skip students outside an assignment target', async () => {
+  const { summarize, toCsv } = await import('../web/lib.js');
+  const g = {
+    students: [{ id: 's1', name: 'A' }, { id: 's2', name: 'B' }],
+    works: [{ id: 'w1', title: '전체', targets: null }, { id: 'w2', title: '일부', targets: ['s2'] }],
+    cells: { s2: { w2: { state: 'TURNED_IN', updated: '2026-10-01' } } },
+  };
+  const s = summarize(g);
+  assert.strictEqual(s.total, 3);
+  assert.strictEqual(s.done, 1);
+  assert.deepStrictEqual(s.missing, [{ name: 'A', miss: 1 }, { name: 'B', miss: 1 }]);
+  const lines = toCsv(g, {}).slice(1).split('\r\n');
+  assert.strictEqual(lines[1], '"A","미제출","–"');
+});

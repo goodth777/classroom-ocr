@@ -42,3 +42,19 @@ test('buildGrid shapes rows for the teacher table', () => {
   assert.deepStrictEqual(g.cells.s1.a2, { state: 'TURNED_IN', late: true, updated: '2026-10-10T01:00:00Z', subId: 'x', text: '글', photos: 2 });
   assert.strictEqual(g.cells.s2, undefined);
 });
+
+test('buildGrid keeps per-assignment targets (null = whole class)', () => {
+  const g = buildGrid(
+    [{ id: 's1', number: 1, name: 'A' }],
+    [{ id: 'a1', title: 'A', created: '1', due: '', studentIds: '' }, { id: 'a2', title: 'B', created: '2', due: '', studentIds: 's1,s9' }],
+    []
+  );
+  assert.deepStrictEqual(g.works.map(w => w.targets), [null, ['s1', 's9']]);
+});
+
+test('isTarget treats an empty list as the whole class', () => {
+  const { isTarget } = require('../gas/Core.js');
+  assert.strictEqual(isTarget({ studentIds: '' }, 's1'), true);
+  assert.strictEqual(isTarget({ studentIds: 's2,s3' }, 's1'), false);
+  assert.strictEqual(isTarget({ studentIds: 's2,s1' }, 's1'), true);
+});
