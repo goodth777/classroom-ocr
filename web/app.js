@@ -3,6 +3,7 @@ import { render, fail, toast, nextNav } from './ui.js';
 import { joinFlow } from './join.js';
 import { studentHome, studentEditor } from './student.js';
 import { teacherView } from './teacher.js';
+import * as outbox from './outbox.js';
 
 // The teacher link (#/teacher?key=…) is opened once; the key then stays on this device.
 const link = /^#\/teacher\?key=([\w-]+)/.exec(location.hash);
@@ -34,5 +35,9 @@ async function route() {
 }
 
 addEventListener('hashchange', route);
-route();
+// Load queued submissions first so screens can show "보내는 중", then resume sending them.
+outbox.init().then(() => {
+  route();
+  if (store.token()) outbox.flush();
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
