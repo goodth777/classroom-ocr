@@ -19,7 +19,7 @@ async function route() {
   const [, view, a, b, c] = location.hash.split('/');
   try {
     if (store.key()) return await teacherView(view === 't' ? a : '', b, c);
-    if (!store.token()) return joinFlow();
+    if (!store.token()) return joinFlow(view === 'join' ? a : '');
     if (view === 'a') return await studentEditor(a);
     if (view === 'notify') return await studentNotify(a);
     if (view === 'chat') return await studentChat(a, b);

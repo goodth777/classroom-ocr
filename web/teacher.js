@@ -1,6 +1,7 @@
 import { call, quiet } from './api.js';
 import { bubbles, bindComposer } from './inbox.js';
 import { fa } from './fa.js';
+import { qrSvg, joinUrl } from './qr.js';
 import { pushState, enablePush, disablePush } from './push.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
@@ -439,11 +440,13 @@ function drawGrid(v, cls) {
 function drawRoster(v, cls) {
   const roster = v.roster;
   const joined = roster.filter(s => s.joined).length;
+  const link = joinUrl(cls.code);
   const body = `
     <section class="r-bento">
       <div class="tile codecard">
-        <div><div class="k">수업 코드</div><div class="code">${esc(cls.code)}</div></div>
-        <div class="codeacts"><button id="big">${fa('expand')}크게 보기</button><button id="copy">${fa('copy')}복사</button><button id="regen">${fa('rotate')}새 코드</button></div>
+        <div class="qr" title="학생이 카메라로 찍으면 수업 코드가 채워진 참여 화면이 열려요">${qrSvg(link, 3)}</div>
+        <div><div class="k">수업 코드 · 카메라로 QR 찍기</div><div class="code">${esc(cls.code)}</div><div class="u">QR을 찍으면 코드가 자동으로 들어가요</div></div>
+        <div class="codeacts"><button id="big" class="on">${fa('expand')}QR 크게 보기</button><button id="copy">${fa('copy')}링크 복사</button><button id="regen">${fa('rotate')}새 코드</button></div>
       </div>
       <div class="tile"><div class="k"><i class="ti">${fa('circle-check')}</i>참여한 학생</div><div class="big">${joined}<small>/ ${roster.length}명</small></div>
         <div class="mbar"><i style="width:${roster.length ? Math.round(joined / roster.length * 100) : 0}%"></i></div></div>
@@ -471,13 +474,14 @@ function drawRoster(v, cls) {
     </form></dialog>
     <div class="board" id="board" hidden>
       <button class="x" id="boardClose">${fa('xmark')}닫기 (Esc)</button>
-      <div class="t">${esc([cls.name, cls.section].filter(Boolean).join(' · '))}</div>
-      <div class="c">${esc(cls.code)}</div>
-      <div class="u">휴대폰에서 앱을 열고 이 코드를 입력하세요</div>
+      <div class="qr">${qrSvg(link, 9)}</div>
+      <div class="bt"><div class="t">${esc([cls.name, cls.section].filter(Boolean).join(' · '))}</div>
+        <div class="c">${esc(cls.code)}</div>
+        <ol><li>휴대폰 카메라로 QR 찍기</li><li>"앱 설치하기" 누르기</li><li>번호 고르고 PIN 4자리 입력</li></ol></div>
     </div>
-    <div class="print-cards" aria-hidden="true">${roster.map(s => `<div class="pcard"><b>${esc(cls.name)}</b><span>${esc(cls.section)} ${s.number}번 ${esc(s.name)}</span>
+    <div class="print-cards" aria-hidden="true">${roster.map(s => `<div class="pcard"><div class="pq">${qrSvg(link, 2)}</div><div><b>${esc(cls.name)}</b><span>${esc(cls.section)} ${s.number}번 ${esc(s.name)}</span>
       <div class="pk"><small>수업 코드</small>${esc(cls.code)}</div><div class="pk"><small>PIN</small>${esc(s.pin)}</div>
-      <p>${esc(location.origin + location.pathname)}</p></div>`).join('')}</div>`;
+      <p>카메라로 QR을 찍고 번호와 PIN을 넣으세요</p></div></div>`).join('')}</div>`;
   const actions = `<button class="btn" id="print">${fa('print')}PIN 카드 인쇄</button><button class="btn primary" id="paste">${fa('plus')}명단 붙여넣기</button>`;
   render(shell(v.classes, cls, 'roster', roster.length, body, actions));
   bindShell();
@@ -489,7 +493,7 @@ function drawRoster(v, cls) {
   $('#big').onclick = () => $('#board').removeAttribute('hidden');
   $('#boardClose').onclick = () => $('#board').setAttribute('hidden', '');
   $('#copy').onclick = async () => {
-    try { await navigator.clipboard.writeText(cls.code); toast('수업 코드를 복사했어요'); } catch { toast(cls.code); }
+    try { await navigator.clipboard.writeText(link); toast('참여 링크를 복사했어요. 단톡방에 붙여 넣으면 돼요'); } catch { toast(link); }
   };
   $('#regen').onclick = async () => {
     if (!confirm('새 코드를 만들면 지금 코드로는 더 이상 참여할 수 없어요. 이미 참여한 학생은 그대로예요. 바꿀까요?')) return;
