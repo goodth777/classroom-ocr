@@ -1,3 +1,5 @@
+> **폐기된 계획 (v1, 구글 클래스룸 연동)** — 2026-10-08 설계 v2(클래스룸 없이, 개인 계정 GAS + 시트)로 바뀌었습니다. 현재 구조는 설계서와 docs/SETUP.md를 보세요.
+
 # 클래스룸 손글씨 제출 앱 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

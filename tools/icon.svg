@@ -1,0 +1,17 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon A "스캔 시트": everything important sits inside the central 80% so round/squircle masks never clip it. -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="0%" r="90%"><stop offset="0" stop-color="#1b4a39"/><stop offset=".6" stop-color="#0b100e"/></radialGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2fd39a" stop-opacity=".55"/><stop offset="1" stop-color="#2fd39a" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect x="146" y="112" width="220" height="288" rx="26" fill="#eef3f0"/>
+  <g fill="#0b100e" opacity=".75">
+    <rect x="182" y="160" width="148" height="12" rx="6"/>
+    <rect x="182" y="196" width="118" height="12" rx="6"/>
+    <rect x="182" y="232" width="148" height="12" rx="6"/>
+    <rect x="182" y="268" width="96" height="12" rx="6"/>
+  </g>
+  <rect x="126" y="292" width="260" height="70" fill="url(#beam)"/>
+  <rect x="120" y="288" width="272" height="10" rx="5" fill="#2fd39a"/>
+</svg>

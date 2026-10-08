@@ -1,7 +1,7 @@
 // Network-first so updates show immediately; cached shell keeps the app opening offline.
 const CACHE = 'shell-v2';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'ui.js', 'api.js', 'lib.js', 'config.js',
-  'store.js', 'join.js', 'student.js', 'teacher.js', 'manifest.webmanifest', 'icons/icon-192.png'];
+  'store.js', 'join.js', 'student.js', 'teacher.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
 
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
