@@ -80,3 +80,52 @@ function withLock_(fn) {
 
 const newId_ = () => Utilities.getUuid().replace(/-/g, '').slice(0, 12);
 const now_ = () => new Date().toISOString();
+
+// ---------- result cache ----------
+// Whole computed answers (a student's "me", a class view) are cached under a version key.
+// Any write that can change them bumps the class version (and the global one for teacher views),
+// so stale answers are simply never looked up again.
+const RESULT_TTL_ = 21600; // 6h, CacheService maximum
+
+function verOf_(scope) {
+  const cache = CacheService.getScriptCache();
+  let v = cache.get('ver:' + scope);
+  if (!v) { v = Utilities.getUuid().slice(0, 8); cache.put('ver:' + scope, v, RESULT_TTL_); }
+  return v;
+}
+
+function bump_(classId) {
+  const v = Utilities.getUuid().slice(0, 8);
+  const keys = { 'ver:all': v };
+  if (classId) keys['ver:' + classId] = v;
+  CacheService.getScriptCache().putAll(keys, RESULT_TTL_);
+}
+
+// CacheService values max out at 100KB, so big JSON is split across numbered keys.
+function getBig_(key) {
+  const cache = CacheService.getScriptCache();
+  const n = +(cache.get(key + '#n') || 0);
+  if (!n) return null;
+  const parts = cache.getAll(Array.from({ length: n }, (_, i) => key + '#' + i));
+  let s = '';
+  for (let i = 0; i < n; i++) { const p = parts[key + '#' + i]; if (p == null) return null; s += p; }
+  return JSON.parse(s);
+}
+
+function putBig_(key, value) {
+  const s = JSON.stringify(value);
+  const size = 90000;
+  const n = Math.ceil(s.length / size) || 1;
+  if (n > 30) return; // ponytail: too big to be worth caching; compute every time
+  const out = { [key + '#n']: String(n) };
+  for (let i = 0; i < n; i++) out[key + '#' + i] = s.slice(i * size, (i + 1) * size);
+  CacheService.getScriptCache().putAll(out, RESULT_TTL_);
+}
+
+function cached_(key, fn) {
+  const hit = getBig_(key);
+  if (hit) return hit;
+  const v = fn();
+  putBig_(key, v);
+  return v;
+}

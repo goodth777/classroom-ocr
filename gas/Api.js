@@ -17,6 +17,7 @@ function err_(message, code) {
 const json_ = obj => ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 
 function doPost(e) {
+  const t0 = Date.now();
   try {
     const req = JSON.parse(e.postData.contents);
     const route = ROUTES_[req.action];
@@ -25,7 +26,8 @@ function doPost(e) {
     let who = null;
     if (route.auth === 'student') who = student_(req.token);
     if (route.auth === 'teacher') teacher_(req.key);
-    return json_({ ok: true, data: route.fn(req, who) });
+    const data = route.fn(req, who);
+    return json_({ ok: true, data: data, ms: Date.now() - t0 });
   } catch (e2) {
     if (!e2.userMessage) console.error(e2.stack || e2);
     return json_({ ok: false, code: e2.code || 'server', error: e2.userMessage || '서버에서 문제가 생겼어요. 잠시 후 다시 시도해 주세요.' });
@@ -46,6 +48,9 @@ function teacher_(key) {
 function student_(token) {
   if (!token) throw err_('다시 참여해 주세요.', 'auth');
   const h = hash_(String(token));
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('tok:' + h);
+  if (hit) return JSON.parse(hit);
   const find = () => {
     const dev = rows_('Devices').find(d => d.tokenHash === h);
     const st = dev && rows_('Students').find(s => s.id === dev.studentId);
@@ -58,6 +63,7 @@ function student_(token) {
     who = find();
   }
   if (!who) throw err_('다시 참여해 주세요. 선생님이 PIN을 새로 발급했을 수 있어요.', 'auth');
+  cache.put('tok:' + h, JSON.stringify(who), RESULT_TTL_);
   return who;
 }
 
@@ -94,12 +100,17 @@ function join_(req) {
   cache.remove(k);
   const token = randomToken_();
   withLock_(() => append_('Devices', { tokenHash: hash_(token), studentId: st.id, created: now_(), lastSeen: now_() }));
+  bump_(cls.id);
   return { token: token, student: { name: st.name, number: +st.number }, cls: { name: cls.name, section: cls.section } };
 }
 
 // ---------- student ----------
 
 function me_(req, who) {
+  return cached_(`me:${who.student.id}:${verOf_(who.cls.id)}`, () => computeMe_(who));
+}
+
+function computeMe_(who) {
   const mine = {};
   rows_('Submissions').filter(s => s.studentId === who.student.id).forEach(s => { mine[s.assignmentId] = s; });
   const assignments = rows_('Assignments').filter(a => a.classId === who.cls.id && isTarget(a, who.student.id)).map(a => {
@@ -149,6 +160,7 @@ function submit_(req, who) {
     if (prev) update_('Submissions', prev._row, row); else append_('Submissions', row);
     return prev;
   });
+  bump_(who.cls.id);
   if (old && old.photoIds) old.photoIds.split(',').forEach(id => { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} });
   return { submittedAt: at, late: late };
 }
@@ -156,6 +168,8 @@ function submit_(req, who) {
 function leave_(req, who) {
   const h = hash_(String(req.token));
   withLock_(() => deleteRows_('Devices', rows_('Devices').filter(d => d.tokenHash === h)));
+  CacheService.getScriptCache().remove('tok:' + h);
+  bump_(who.cls.id);
   return true;
 }
 
@@ -184,6 +198,7 @@ function createClass_(req) {
   return withLock_(() => {
     const c = { id: newId_(), name: name, section: String(req.section || '').trim(), subject: String(req.subject || '').trim(), code: uniqueCode_(), created: now_() };
     append_('Classes', c);
+    bump_(c.id);
     return c;
   });
 }
@@ -194,6 +209,7 @@ function newCode_(req) {
     if (!c) throw err_('반을 찾을 수 없어요.', 'notfound');
     c.code = uniqueCode_();
     update_('Classes', c._row, c);
+    bump_(c.id);
     return c.code;
   });
 }
@@ -216,6 +232,7 @@ function addStudents_(req) {
     fresh.forEach(s => append_('Students', { id: newId_(), classId: req.classId, number: s.number, name: s.name, pin: makePin(), created: now_() }));
     return fresh.length;
   });
+  bump_(req.classId);
   return { added: added, skipped: list.length - added, roster: roster_(req) };
 }
 
@@ -225,7 +242,10 @@ function reissuePin_(req) {
     if (!s) throw err_('학생을 찾을 수 없어요.', 'notfound');
     s.pin = makePin();
     update_('Students', s._row, s);
-    deleteRows_('Devices', rows_('Devices').filter(d => d.studentId === s.id)); // old devices must join again
+    const gone = rows_('Devices').filter(d => d.studentId === s.id);
+    deleteRows_('Devices', gone); // old devices must join again
+    gone.forEach(d => CacheService.getScriptCache().remove('tok:' + d.tokenHash));
+    bump_(s.classId);
     return s.pin;
   });
 }
@@ -258,6 +278,7 @@ function createAssignment_(req) {
   return withLock_(() => {
     const a = { id: newId_(), classId: req.classId, title: title, description: String(req.description || '').trim(), due: due, created: now_(), studentIds: studentIds };
     append_('Assignments', a);
+    bump_(a.classId);
     return a.id;
   });
 }
@@ -277,12 +298,17 @@ function updateTargets_(req) {
     if (!a) throw err_('과제를 찾을 수 없어요.', 'notfound');
     a.studentIds = targetIds_(a.classId, req.studentIds);
     update_('Assignments', a._row, a);
+    bump_(a.classId);
     return targetsOf(a);
   });
 }
 
 // Everything the teacher screen needs for one class, in a single round trip.
 function view_(req) {
+  return cached_(`view:${req.classId || ''}:${verOf_('all')}`, () => computeView_(req));
+}
+
+function computeView_(req) {
   const classes = classes_();
   const cls = classes.find(c => c.id === req.classId) || classes[0];
   if (!cls) return { classes: classes, classId: null };
