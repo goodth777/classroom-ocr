@@ -1,7 +1,7 @@
 // Google Sheet as a tiny database: one sheet per table, header row = column names, every cell stored as text.
 
 const HEADERS_ = {
-  Classes: ['id', 'name', 'section', 'subject', 'code', 'created'],
+  Classes: ['id', 'name', 'section', 'subject', 'code', 'created', 'kind'],
   Students: ['id', 'classId', 'number', 'name', 'pin', 'created'],
   Devices: ['tokenHash', 'studentId', 'created', 'lastSeen'],
   Assignments: ['id', 'classId', 'title', 'description', 'due', 'created', 'studentIds'],
@@ -10,6 +10,7 @@ const HEADERS_ = {
   Announcements: ['id', 'classId', 'title', 'body', 'pinned', 'created'],
   AnnReads: ['annId', 'studentId', 'readAt'],
   PushSubs: ['token', 'role', 'studentId', 'classId', 'prefs', 'created'],
+  Seats: ['id', 'classId', 'name', 'layout', 'updated'],
 };
 
 let db_cache_ = null;
@@ -19,7 +20,7 @@ const sheet_ = name => db_().getSheetByName(name);
 
 // Small tables are cached for a minute in CacheService (a sheet read costs ~0.3s); every read is also
 // memoised for the rest of the request. Writes drop both. Inside withLock_ reads always go to the sheet.
-const CACHED_ = { Classes: true, Students: true, Devices: true, Assignments: true, Announcements: true, AnnReads: true, PushSubs: true };
+const CACHED_ = { Classes: true, Students: true, Devices: true, Assignments: true, Announcements: true, AnnReads: true, PushSubs: true, Seats: true };
 let memo_ = {};
 let fresh_ = false;
 
@@ -54,7 +55,7 @@ function dirty_(name) {
 // Adds sheets and columns introduced after setup() (e.g. Messages, Assignments.studentIds), once.
 function ensureSchema_() {
   const cache = CacheService.getScriptCache();
-  if (cache.get('schema:4')) return;
+  if (cache.get('schema:5')) return;
   Object.keys(HEADERS_).forEach(name => {
     let sh = sheet_(name);
     if (!sh) {
@@ -67,7 +68,7 @@ function ensureSchema_() {
     const head = sh.getRange(1, 1, 1, HEADERS_[name].length).getDisplayValues()[0];
     HEADERS_[name].forEach((k, i) => { if (head[i] !== k) sh.getRange(1, i + 1).setNumberFormat('@').setValue(k); });
   });
-  cache.put('schema:4', '1', 21600);
+  cache.put('schema:5', '1', 21600);
 }
 
 const cells_ = (name, obj) => HEADERS_[name].map(k => (obj[k] == null ? '' : String(obj[k])));

@@ -184,7 +184,7 @@ function classes_() {
   const joined = new Set(rows_('Devices').map(d => d.studentId));
   return rows_('Classes').map(c => {
     const mine = students.filter(s => s.classId === c.id);
-    return { id: c.id, name: c.name, section: c.section, subject: c.subject, code: c.code,
+    return { id: c.id, name: c.name, section: c.section, subject: c.subject, code: c.code, kind: c.kind || '',
       students: mine.length, joined: mine.filter(s => joined.has(s.id)).length, unread: unread[c.id] || 0 };
   });
 }
@@ -198,9 +198,9 @@ function uniqueCode_() {
 
 function createClass_(req) {
   const name = String(req.name || '').trim();
-  if (!name) throw err_('반 이름을 입력해 주세요.');
+  if (!name) throw err_('클래스 이름을 입력해 주세요.');
   return withLock_(() => {
-    const c = { id: newId_(), name: name, section: String(req.section || '').trim(), subject: String(req.subject || '').trim(), code: uniqueCode_(), created: now_() };
+    const c = { id: newId_(), name: name, section: String(req.section || '').trim(), subject: String(req.subject || '').trim(), code: uniqueCode_(), created: now_(), kind: req.kind === 'homeroom' ? 'homeroom' : '' };
     append_('Classes', c);
     bump_(c.id);
     return c;
@@ -210,7 +210,7 @@ function createClass_(req) {
 function newCode_(req) {
   return withLock_(() => {
     const c = rows_('Classes').find(x => x.id === req.classId);
-    if (!c) throw err_('반을 찾을 수 없어요.', 'notfound');
+    if (!c) throw err_('클래스를 찾을 수 없어요.', 'notfound');
     c.code = uniqueCode_();
     update_('Classes', c._row, c);
     bump_(c.id);
@@ -286,7 +286,7 @@ function photos_(req) {
 function createAssignment_(req) {
   const title = String(req.title || '').trim();
   if (!title) throw err_('과제 제목을 입력해 주세요.');
-  if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('반을 찾을 수 없어요.', 'notfound');
+  if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('클래스를 찾을 수 없어요.', 'notfound');
   const due = /^\d{4}-\d{2}-\d{2}$/.test(req.due || '') ? req.due : '';
   const studentIds = targetIds_(req.classId, req.studentIds);
   const a = withLock_(() => {
@@ -362,6 +362,9 @@ function routes_() { return {
   postAnn: { auth: 'teacher', fn: postAnn_ },
   pinAnn: { auth: 'teacher', fn: pinAnn_ },
   delAnn: { auth: 'teacher', fn: delAnn_ },
+  seats: { auth: 'teacher', fn: seats_ },
+  seatPut: { auth: 'teacher', fn: seatPut_ },
+  seatDel: { auth: 'teacher', fn: seatDel_ },
   pushSub: { auth: 'student', fn: pushSub_ },
   tPushSub: { auth: 'teacher', fn: tPushSub_ },
   pushUnsub: { auth: 'none', fn: pushUnsub_ },

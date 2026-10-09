@@ -118,7 +118,7 @@ function tSend_(req) {
 function postAnn_(req) {
   const title = String(req.title || '').trim();
   if (!title) throw err_('공지 제목을 입력해 주세요.');
-  if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('반을 찾을 수 없어요.', 'notfound');
+  if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('클래스를 찾을 수 없어요.', 'notfound');
   const a = { id: newId_(), classId: req.classId, title: title, body: String(req.body || '').trim(), pinned: req.pinned ? 'Y' : '', created: now_() };
   withLock_(() => append_('Announcements', a));
   bump_(req.classId);
