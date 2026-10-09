@@ -2,6 +2,7 @@ import { call, quiet } from './api.js';
 import { bubbles, bindComposer } from './inbox.js';
 import { fa } from './fa.js';
 import { qrSvg, joinUrl } from './qr.js';
+import { seatsView } from './seats.js';
 import { pushState, enablePush, disablePush } from './push.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
@@ -78,17 +79,33 @@ export async function teacherView(classId, tab, sub) {
   store.setCache('view:' + (v.classId || ''), v);
   store.setCache('view:', v);
   if (!v.classId) return drawEmpty(v);
-  if (classId !== v.classId) return location.replace(`#/t/${v.classId}/${tab || 'grid'}`);
+  if (classId !== v.classId) return location.replace(`#/t/${v.classId}/${tabFor(v.classes.find(c => c.id === v.classId), tab)}`);
   if (JSON.stringify(v) !== JSON.stringify(old) && !busyUI()) draw(v, tab, sub);
 }
 
 const reload = (cls, tab) => teacherView(cls.id, tab).catch(e => toast(e.message));
 
+// Homeroom classes open on seats and have no assignment grid; teaching classes have no seats.
+const isHome = c => !!c && c.kind === 'homeroom';
+function tabFor(c, tab) {
+  if (tab === 'roster' || tab === 'msg') return tab;
+  return isHome(c) ? 'seats' : 'grid';
+}
+
 function draw(v, tab, sub) {
   bindEsc();
   const cls = v.classes.find(c => c.id === v.classId);
+  tab = tabFor(cls, tab);
   if (tab === 'msg') return drawMsg(v, cls, sub || '');
-  return tab === 'roster' ? drawRoster(v, cls) : drawGrid(v, cls);
+  if (tab === 'roster') return drawRoster(v, cls);
+  if (tab === 'seats') {
+    return seatsView({
+      v, cls,
+      frame: (body, actions) => shell(v.classes, cls, 'seats', (v.roster || []).length, body, actions),
+      after: bindShell,
+    });
+  }
+  return drawGrid(v, cls);
 }
 
 // ---------- shell: class sidebar + header with tabs ----------
@@ -97,30 +114,39 @@ function shell(classes, cls, tab, students, body, actions) {
   return `<div class="t-layout">
     <aside class="side">
       <div class="brand"><img src="icons/icon-192.png" alt=""><span><b>과제 제출</b><small>손글씨 OCR</small></span></div>
-      <div class="lab">내 반</div>
-      ${classes.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tab}">${fa('book-open')}<span class="cn">${esc(c.name)}</span>${c.unread ? `<span class="badge">${c.unread}</span>` : `<small>${esc(c.section)}</small>`}</a>`).join('')}
-      <button class="addclass" id="addClass">${fa('plus')}새 반 만들기</button>
+      ${classGroup('담임', classes.filter(isHome), cls, tab, 'house-chimney-user')}
+      ${classGroup(classes.some(isHome) ? '수업' : '내 클래스', classes.filter(c => !isHome(c)), cls, tab, 'book-open')}
+      <button class="addclass" id="addClass">${fa('plus')}새 클래스 만들기</button>
       <div class="me"><div class="av">${fa('user')}</div><div><b>선생님</b><span>개인 구글 계정</span></div></div>
       ${pcPush()}
       <button class="sheetlink" id="openSheet">${fa('table')}원본 시트 열기</button>
     </aside>
     <main class="tmain">
       ${cls ? `<div class="thead">
-        <h1>${esc(cls.name)}</h1><span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
-        <nav class="tabs"><a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a><a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
+        <h1>${esc(cls.name)}</h1>${isHome(cls) ? '<span class="chip home">담임 클래스</span>' : ''}<span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
+        <nav class="tabs">${isHome(cls)
+          ? `<a class="${tab === 'seats' ? 'on' : ''}" href="#/t/${cls.id}/seats">${fa('chair')}좌석 배치</a>`
+          : `<a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a>`}<a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
           <a class="${tab === 'msg' ? 'on' : ''}" href="#/t/${cls.id}/msg">${fa('comment-dots')}메시지${cls.unread ? ` <span class="badge">${cls.unread}</span>` : ''}</a></nav>
         <span class="sp"></span>${actions}
       </div>` : ''}
       ${body}
     </main>
     <dialog class="sheet" id="classDlg"><form id="classForm">
-      <h3>새 반 만들기</h3>
-      <p class="muted small">반을 만들면 학생이 입력할 수업 코드가 바로 생겨요.</p>
-      <label>반 이름<input name="name" required placeholder="예: 2학년 영어 독해"></label>
+      <h3>새 클래스 만들기</h3>
+      <p class="muted small">클래스를 만들면 학생이 입력할 수업 코드가 바로 생겨요.</p>
+      <div class="f"><span>종류</span><div class="seg2" id="kindSeg"><button type="button" data-kind="" class="on">${fa('book-open')} 수업 클래스</button><button type="button" data-kind="homeroom">${fa('house-chimney-user')} 담임 클래스</button></div></div>
+      <input type="hidden" name="kind" value="">
+      <label>클래스 이름<input name="name" required placeholder="예: 2학년 영어 독해"></label>
       <div class="row2"><label>학년·반<input name="section" placeholder="예: 2-3반"></label><label>과목 (선택)<input name="subject" placeholder="예: 영어"></label></div>
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary">만들기</button></div>
     </form></dialog>
   </div>`;
+}
+
+function classGroup(label, list, cls, tab, icon) {
+  if (!list.length) return '';
+  return `<div class="lab">${label}</div>${list.map(c => `<a class="course ${cls && c.id === cls.id ? 'on' : ''}" href="#/t/${c.id}/${tabFor(c, tab)}">${fa(icon)}<span class="cn">${esc(c.name)}</span>${c.unread ? `<span class="badge">${c.unread}</span>` : `<small>${esc(c.section)}</small>`}</a>`).join('')}`;
 }
 
 function pcPush() {
@@ -131,6 +157,14 @@ function pcPush() {
 
 function bindShell() {
   $('#addClass').onclick = () => $('#classDlg').showModal();
+  $('#kindSeg').onclick = e => {
+    const b = e.target.closest('[data-kind]');
+    if (!b) return;
+    $('#kindSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    const f = $('#classForm');
+    f.kind.value = b.dataset.kind;
+    f.name.placeholder = b.dataset.kind ? '예: 2학년 3반' : '예: 2학년 영어 독해';
+  };
   if ($('#pcPush')) $('#pcPush').onclick = async () => {
     const st = pushState();
     if (st === 'denied') return toast('주소창 왼쪽 자물쇠 → 알림 → 허용으로 바꿔 주세요');
@@ -153,9 +187,9 @@ function bindShell() {
     btn.disabled = true;
     btn.textContent = '만드는 중…';
     try {
-      const c = await call('createClass', { name: f.get('name'), section: f.get('section'), subject: f.get('subject') });
+      const c = await call('createClass', { name: f.get('name'), section: f.get('section'), subject: f.get('subject'), kind: f.get('kind') });
       $('#classDlg').close();
-      toast(`반을 만들었어요. 수업 코드는 ${c.code}예요`);
+      toast(`클래스를 만들었어요. 수업 코드는 ${c.code}예요`);
       location.hash = `#/t/${c.id}/roster`;
     } catch (err) {
       btn.disabled = false;
@@ -167,9 +201,9 @@ function bindShell() {
 
 function drawEmpty(v) {
   render(shell(v.classes, null, 'grid', 0, `<section class="center"><div class="hero-card">
-    <div class="logo"></div><h1>첫 반을 만들어 주세요</h1>
-    <p class="muted">반을 만들고 학생 명단을 붙여 넣으면,<br>학생이 수업 코드와 PIN으로 참여할 수 있어요.</p>
-    <button class="btn primary" id="firstClass">${fa('plus')}새 반 만들기</button></div></section>`, ''));
+    <div class="logo"></div><h1>첫 클래스를 만들어 주세요</h1>
+    <p class="muted">클래스를 만들고 학생 명단을 붙여 넣으면,<br>학생이 수업 코드와 PIN으로 참여할 수 있어요.</p>
+    <button class="btn primary" id="firstClass">${fa('plus')}새 클래스 만들기</button></div></section>`, ''));
   bindShell();
   $('#firstClass').onclick = () => $('#classDlg').showModal();
 }
@@ -178,7 +212,7 @@ function drawEmpty(v) {
 
 function pickerHtml(students, chosen, all) {
   return `<div class="f"><span>대상</span><div class="seg2" data-seg>
-      <button type="button" data-all="1" class="${all ? 'on' : ''}">반 전체 (${students.length}명)</button>
+      <button type="button" data-all="1" class="${all ? 'on' : ''}">클래스 전체 (${students.length}명)</button>
       <button type="button" data-all="0" class="${all ? '' : 'on'}">일부 학생 선택</button></div></div>
     <div class="who" data-who ${all ? 'hidden' : ''}>
       <div class="whohead"><b data-count></b><span class="sp"></span>
@@ -289,10 +323,10 @@ function drawGrid(v, cls) {
       <label>안내<textarea name="description" rows="2" placeholder="학생에게 보일 안내 (선택)"></textarea></label>
       <div class="row2">
         <label>마감일<input type="date" name="due" value="${weekLater()}"></label>
-        <label>반<select name="classId" id="newClass">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <label>클래스<select name="classId" id="newClass">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       </div>
       <div id="newPick">${pickerHtml(grid.students, new Set(), true)}</div>
-      <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="create">반 전체에게 과제 내기</button></div>
+      <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="create">클래스 전체에게 과제 내기</button></div>
     </form></dialog>
     <dialog class="sheet wide" id="tgtDlg"><form id="tgtForm">
       <h3 id="tgtTitle"></h3><p class="muted small">이미 제출한 학생의 제출물은 대상에서 빼도 지워지지 않아요.</p>
@@ -404,13 +438,13 @@ function drawGrid(v, cls) {
 
   // new assignment (targets only for this class; another class gets the whole class)
   let pick = bindPicker($('#newPick'), grid.students, missIds, n => {
-    $('#create').textContent = n == null ? '반 전체에게 과제 내기' : `${n}명에게 과제 내기`;
+    $('#create').textContent = n == null ? '클래스 전체에게 과제 내기' : `${n}명에게 과제 내기`;
     $('#create').disabled = n === 0;
   });
   $('#newClass').onchange = e => {
     const same = e.target.value === cls.id;
     $('#newPick').hidden = !same;
-    if (!same) { $('#create').textContent = '반 전체에게 과제 내기'; $('#create').disabled = false; }
+    if (!same) { $('#create').textContent = '클래스 전체에게 과제 내기'; $('#create').disabled = false; }
   };
   $('#new').onclick = () => $('#newDlg').showModal();
   $('#newForm').onsubmit = async e => {
@@ -440,7 +474,7 @@ function drawGrid(v, cls) {
     $('#tgtTitle').textContent = `"${w.title}" 대상 바꾸기`;
     $('#tgtPick').innerHTML = pickerHtml(grid.students, new Set(w.targets || []), !w.targets);
     const get = bindPicker($('#tgtPick'), grid.students, missIds, n => {
-      $('#tgtGo').textContent = n == null ? '반 전체로 저장' : `${n}명으로 저장`;
+      $('#tgtGo').textContent = n == null ? '클래스 전체로 저장' : `${n}명으로 저장`;
       $('#tgtGo').disabled = n === 0;
     });
     $('#tgtForm').onsubmit = async e => {
@@ -621,7 +655,7 @@ function paintMsg(v, cls) {
   const latestAnn = box && box.anns[0];
   const list = !box ? '<p class="muted small">불러오는 중…</p>' : `
     <a class="cv ${sel === 'ann' ? 'on' : ''}" href="#/t/${cls.id}/msg/ann"><div class="a ann">${fa('bullhorn')}</div><div class="t">
-      <b>반 공지 <small>${latestAnn ? esc(when(latestAnn.created)) : ''}</small></b>
+      <b>클래스 공지 <small>${latestAnn ? esc(when(latestAnn.created)) : ''}</small></b>
       <p>${latestAnn ? `${esc(latestAnn.title)} · 읽음 ${latestAnn.read}/${latestAnn.total}` : '아직 공지가 없어요'}</p></div></a>
     ${box.threads.filter(t => !mstate.q || t.name.includes(mstate.q)).map(t => `
       <a class="cv ${t.unread ? 'unread' : ''} ${sel === t.studentId ? 'on' : ''}" href="#/t/${cls.id}/msg/${t.studentId}"><div class="a">${t.number}</div><div class="t">
@@ -631,13 +665,13 @@ function paintMsg(v, cls) {
 
   let right;
   if (sel === 'ann') {
-    right = `<div class="th"><div class="a ann">${fa('bullhorn')}</div><div><b>반 공지</b><small>${esc([cls.name, cls.section].filter(Boolean).join(' · '))} 학생 ${grid.students.length}명에게</small></div><span class="sp"></span></div>
+    right = `<div class="th"><div class="a ann">${fa('bullhorn')}</div><div><b>클래스 공지</b><small>${esc([cls.name, cls.section].filter(Boolean).join(' · '))} 학생 ${grid.students.length}명에게</small></div><span class="sp"></span></div>
       <div class="annlist">${(box ? box.anns : []).map(a => `<article class="ann ${a.pinned ? 'pin' : ''}">
         <div class="h">${a.pinned ? `<span class="tag">${fa('thumbtack')}고정</span>` : ''}${esc(when(a.created))}<span class="sp"></span>
           <button class="lk" data-pin="${a.id}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? '고정 해제' : `${fa('thumbtack')}고정`}</button><button class="lk del" data-del="${a.id}">삭제</button></div>
         <b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}
         <div class="read">읽음 <b>${a.read}/${a.total}</b><span class="rbar"><i style="width:${a.total ? Math.round(a.read / a.total * 100) : 0}%"></i></span>${a.unreadNames.length ? `안 읽음: ${esc(a.unreadNames.join(', '))}` : ''}</div>
-      </article>`).join('') || '<p class="empty">아직 공지가 없어요. 오른쪽 위 "새 공지"로 반 전체에 알릴 수 있어요.</p>'}</div>`;
+      </article>`).join('') || '<p class="empty">아직 공지가 없어요. 오른쪽 위 "새 공지"로 클래스 전체에 알릴 수 있어요.</p>'}</div>`;
   } else if (sel) {
     const s = grid.students.find(x => x.id === sel) || (box && box.threads.find(t => t.studentId === sel)) || { name: '', number: '' };
     const works = grid.works.filter(w => assigned(w, sel));
@@ -649,7 +683,7 @@ function paintMsg(v, cls) {
       <div class="quick">${QUICK.map(q => `<button type="button" data-quick="${esc(q)}">${esc(q)}</button>`).join('')}</div>
       <form class="comp" id="composer"><textarea id="msg" rows="1" placeholder="${esc(s.name)}에게 메시지… (Enter 보내기 · Shift+Enter 줄바꿈)" aria-label="메시지"></textarea><button class="btn primary">보내기</button></form>`;
   } else {
-    right = `<div class="pickone">${fa('comments')}<p>왼쪽에서 학생이나 반 공지를 골라 주세요.<br>학생이 과제 화면에서 질문하면 어떤 과제인지 꼬리표가 붙어 와요.</p></div>`;
+    right = `<div class="pickone">${fa('comments')}<p>왼쪽에서 학생이나 클래스 공지를 골라 주세요.<br>학생이 과제 화면에서 질문하면 어떤 과제인지 꼬리표가 붙어 와요.</p></div>`;
   }
 
   const body = `<div class="inbox ${sel ? 'has-sel' : ''}">

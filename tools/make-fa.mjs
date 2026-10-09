@@ -4,7 +4,8 @@ import { writeFileSync } from 'node:fs';
 const V = '6.5.2';
 const NAMES = ['table-cells-large', 'users', 'comment-dots', 'bullhorn', 'plus', 'download', 'table', 'bell', 'bell-slash',
   'magnifying-glass', 'circle-check', 'circle-exclamation', 'clock-rotate-left', 'calendar-check', 'book-open', 'user',
-  'thumbtack', 'print', 'expand', 'copy', 'rotate', 'xmark', 'trash-can', 'arrow-right', 'comments'];
+  'thumbtack', 'print', 'expand', 'copy', 'rotate', 'xmark', 'trash-can', 'arrow-right', 'comments', 'house-chimney-user', 'chair', 'shuffle', 'floppy-disk', 'folder-open',
+  'table-columns', 'border-all', 'user-graduate', 'chalkboard-user', 'arrows-left-right', 'eraser', 'chevron-right', 'volume-high', 'check'];
 const out = {};
 for (const n of NAMES) {
   const svg = await (await fetch(`https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@${V}/svgs/solid/${n}.svg`)).text();

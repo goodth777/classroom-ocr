@@ -156,7 +156,7 @@ export async function studentChat(tab, arg) {
   function draw() {
     const box = inboxOf(me);
     const tabs = `<nav class="tabs2"><a href="#/chat" class="${view === 'dm' ? 'on' : ''}">1:1 대화${badge(view === 'dm' ? 0 : box.unread.msg, 'i')}</a>
-      <a href="#/chat/ann" class="${view === 'ann' ? 'on' : ''}">반 공지${badge(view === 'ann' ? 0 : box.unread.ann, 'i')}</a></nav>`;
+      <a href="#/chat/ann" class="${view === 'ann' ? 'on' : ''}">클래스 공지${badge(view === 'ann' ? 0 : box.unread.ann, 'i')}</a></nav>`;
     const body = view === 'ann'
       ? box.anns.map(a => `<article class="ann ${a.pinned ? 'pin' : ''}"><div class="h">${a.pinned ? '<span class="tag">📌 고정</span>' : ''}${esc(when(a.created))}</div>
           <b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}</article>`).join('') || '<p class="empty">아직 공지가 없어요</p>'
