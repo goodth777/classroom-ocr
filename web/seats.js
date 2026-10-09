@@ -436,21 +436,16 @@ function openShuffle() {
 }
 
 async function reveal(prefs) {
-  const who = names();
-  for (;;) {
-    const r = arrange(S.L, studentIds(), baseAssign());
-    const res = await showSeats({ L: { ...S.L, assign: r.assign }, who, title: ctx.cls.name, ...prefs });
-    if (res === 'again') continue;
-    if (res === 'ok') {
-      commit({ ...S.L, assign: r.assign });
-      const notes = [];
-      if (r.same) notes.push(`${r.same}명은 자리가 빠듯해 같은 자리예요`);
-      if (r.apartFail) notes.push('떨어뜨릴 수 없는 쌍이 있어요');
-      if (r.unseated.length) notes.push(`${r.unseated.length}명은 자리가 없어요`);
-      toast(notes.length ? notes.join(' · ') : '새 자리를 확정했어요. 마음에 들면 "저장"을 눌러 주세요');
-    }
-    return;
-  }
+  let r;
+  const shuffle = () => { r = arrange(S.L, studentIds(), baseAssign()); return { ...S.L, assign: r.assign }; };
+  const out = await showSeats({ L: shuffle(), who: names(), title: ctx.cls.name, ...prefs, reshuffle: shuffle });
+  if (out.res !== 'ok') return;
+  commit({ ...S.L, assign: out.L.assign });
+  const notes = [];
+  if (r.same) notes.push(`${r.same}명은 자리가 빠듯해 같은 자리예요`);
+  if (r.apartFail) notes.push('떨어뜨릴 수 없는 쌍이 있어요');
+  if (r.unseated.length) notes.push(`${r.unseated.length}명은 자리가 없어요`);
+  toast(notes.length ? notes.join(' · ') : '새 자리를 확정했어요. 마음에 들면 "저장"을 눌러 주세요');
 }
 
 // ---------- print ----------
