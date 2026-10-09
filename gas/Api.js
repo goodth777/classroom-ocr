@@ -118,7 +118,7 @@ function computeMe_(who) {
     return { id: a.id, title: a.title, description: a.description, due: a.due, created: a.created,
       state: s ? 'TURNED_IN' : 'NEW', updated: s ? s.submittedAt : '', late: !!(s && s.late), text: s ? s.text : '' };
   });
-  return { student: { name: who.student.name, number: +who.student.number }, cls: { name: who.cls.name, section: who.cls.section }, assignments: assignments, inbox: studentInbox_(who) };
+  return { student: { name: who.student.name, number: +who.student.number }, cls: { name: who.cls.name, section: who.cls.section }, assignments: assignments, inbox: studentInbox_(who), forms: studentForms_(who) };
 }
 
 function ocrAction_(req) {
@@ -365,6 +365,16 @@ function routes_() { return {
   seats: { auth: 'teacher', fn: seats_ },
   seatPut: { auth: 'teacher', fn: seatPut_ },
   seatDel: { auth: 'teacher', fn: seatDel_ },
+  form: { auth: 'student', fn: form_ },
+  answer: { auth: 'student', fn: answer_ },
+  forms: { auth: 'teacher', fn: forms_ },
+  formPut: { auth: 'teacher', fn: formPut_ },
+  formSend: { auth: 'teacher', fn: formSend_ },
+  formClose: { auth: 'teacher', fn: formClose_ },
+  formDel: { auth: 'teacher', fn: formDel_ },
+  responses: { auth: 'teacher', fn: responses_ },
+  grade: { auth: 'teacher', fn: grade_ },
+  formNudge: { auth: 'teacher', fn: formNudge_ },
   pushSub: { auth: 'student', fn: pushSub_ },
   tPushSub: { auth: 'teacher', fn: tPushSub_ },
   pushUnsub: { auth: 'none', fn: pushUnsub_ },
