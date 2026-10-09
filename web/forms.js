@@ -108,19 +108,63 @@ const paint = (body, actions = '') => { render(ctx.frame(body, actions)); ctx.af
 
 // ---------- list ----------
 
+let listFilter = 'all';
+let picking = null; // Set of selected form ids while in "선택" mode
+
 function drawList() {
-  const rows = F.list.slice().sort((a, b) => String(b.created || b.updated).localeCompare(String(a.created || a.updated)));
-  const state = f => (f.status === 'draft' ? ['draft', '초안'] : isOver(f) ? ['', '마감'] : ['live', '진행 중']);
-  paint(`<section class="sv-list">${rows.map(f => {
+  const state = f => (f.status === 'draft' ? ['draft', '초안'] : isOver(f) ? ['closed', '마감'] : ['live', '진행 중']);
+  const all = F.list.slice().sort((a, b) => String(b.created || b.updated).localeCompare(String(a.created || a.updated)));
+  const rows = all.filter(f => listFilter === 'all' || state(f)[0] === listFilter);
+  const count = k => all.filter(f => state(f)[0] === k).length;
+  const bar = `<div class="sv-listbar"><div class="seg2 sv-filter">${[['all', '전체', all.length], ['draft', '초안', count('draft')], ['live', '진행 중', count('live')], ['closed', '마감', count('closed')]]
+      .map(([k, t, n]) => `<button type="button" data-filter="${k}" class="${listFilter === k ? 'on' : ''}">${t} <small>${n}</small></button>`).join('')}</div><span class="sp"></span>
+    ${picking ? `<button type="button" class="btn" id="svPickAll">${rows.length && rows.every(f => picking.has(f.id)) ? '전체 해제' : '전체 선택'}</button>
+      <button type="button" class="btn sv-danger" id="svPickDel" ${picking.size ? '' : 'disabled'}>${fa('trash-can')}선택 삭제 (${picking.size})</button>
+      <button type="button" class="btn" id="svPickOff">취소</button>`
+    : `<button type="button" class="btn" id="svPickOn" ${all.length ? '' : 'disabled'}>${fa('square-check')}선택</button>`}</div>`;
+  const row = f => {
     const [st, label] = state(f);
     const tot = f.targets || (ctx.v.roster || []).length || 0, n = f.responses || 0;
     const meta = [dueText(f.due), f.settings && f.settings.anon ? '익명' : '', `${(f.questions || []).length}문항`].filter(Boolean).join(' · ');
-    return `<a class="sv-row" href="#/t/${F.cls}/forms/${f.id}${f.status === 'draft' ? '' : '/a'}">${kindChip(f.kind)}
+    const inner = `${picking ? `<span class="sv-check ${picking.has(f.id) ? 'on' : ''}">${fa('check')}</span>` : ''}${kindChip(f.kind)}
       <div class="sv-row-t"><b>${esc(f.title || '제목 없음')}</b><small>${esc(meta)}</small></div>
       <div class="sv-row-n"><span><b>${n}</b>/${tot}명 냄</span><span class="sv-bar"><i style="width:${tot ? Math.min(100, n / tot * 100) : 0}%"></i></span></div>
-      <span class="sv-st ${st}">${label}</span></a>`;
-  }).join('') || `<div class="sv-empty">${fa('square-poll-horizontal')}<p>아직 만든 설문이 없어요.<br>오른쪽 위 "새로 만들기"로 설문·퀴즈·회신을 만들어 보세요.</p></div>`}</section>`,
+      <span class="sv-st ${st}">${label}</span>`;
+    return picking
+      ? `<button type="button" class="sv-row picking ${picking.has(f.id) ? 'sel' : ''}" data-pick="${f.id}">${inner}</button>`
+      : `<a class="sv-row" href="#/t/${F.cls}/forms/${f.id}${f.status === 'draft' ? '' : '/a'}">${inner}</a>`;
+  };
+  paint(`${bar}<section class="sv-list">${rows.map(row).join('') || `<div class="sv-empty">${fa('square-poll-horizontal')}<p>${all.length ? '이 조건에 맞는 항목이 없어요.' : `아직 만든 것이 없어요.<br>오른쪽 위 "새로 만들기"로 ${ctx.cls.kind === 'homeroom' ? '설문·회신' : '퀴즈·회신'}을 만들어 보세요.`}</p></div>`}</section>`,
   `<a class="btn primary" href="#/t/${F.cls}/forms/new">${fa('plus')}새로 만들기</a>`);
+  $('.sv-listbar').onclick = e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.filter) { listFilter = b.dataset.filter; if (picking) picking.clear(); }
+    else if (b.id === 'svPickOn') picking = new Set();
+    else if (b.id === 'svPickOff') picking = null;
+    else if (b.id === 'svPickAll') { const allOn = rows.every(f => picking.has(f.id)); rows.forEach(f => (allOn ? picking.delete(f.id) : picking.add(f.id))); }
+    else if (b.id === 'svPickDel') return deletePicked();
+    drawList();
+  };
+  if (picking) $('.sv-list').onclick = e => {
+    const r = e.target.closest('[data-pick]');
+    if (!r) return;
+    picking.has(r.dataset.pick) ? picking.delete(r.dataset.pick) : picking.add(r.dataset.pick);
+    drawList();
+  };
+}
+
+// Gone from the screen at once; the server deletes behind.
+function deletePicked() {
+  const ids = [...picking];
+  const withAnswers = F.list.filter(f => ids.includes(f.id)).reduce((n, f) => n + (f.responses || 0), 0);
+  if (!confirm(`${ids.length}개를 지울까요?${withAnswers ? `\n받은 응답 ${withAnswers}개도 함께 지워져요.` : ''}`)) return;
+  F.list = F.list.filter(f => !ids.includes(f.id));
+  saveList();
+  ids.forEach(id => { clearTimeout(timers[id]); quiet('formDel', { id }).catch(() => {}); });
+  picking = null;
+  toast(`${ids.length}개를 지웠어요`);
+  drawList();
 }
 
 // ---------- new: pick a kind ----------
@@ -132,12 +176,18 @@ function blank(kind) {
     questions: [{ id: qid(), type: 'mc', title: '', required: true, options: ['선택지 1', '선택지 2'], points: 1 }] };
 }
 
+// Teaching classes: quiz + reply. Homeroom classes: survey + reply.
+const kindsFor = cls => (cls.kind === 'homeroom' ? ['survey', 'reply'] : ['quiz', 'reply']);
+
 function drawChooser() {
+  const ITEMS = {
+    survey: ['객관식·체크박스·단답·장문·척도', '익명으로 받기 가능', '요약 그래프 · CSV'],
+    quiz: ['객관식·체크박스·단답 자동 채점', '장문은 직접 채점', '점수표 · 문항별 정답률'],
+    reply: ['확인했어요 / 예·아니요 / 직접 선택지', '안 한 학생 바로 보기', '가정통신문 확인 등'],
+  };
   const card = (k, items) => `<button type="button" class="sv-kc" data-kind="${k}"><span class="sv-kc-ic ${KIND[k].cls}">${fa(KIND[k].icon)}</span><b>${KIND[k].label}</b><p>${KIND[k].blurb}</p><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul></button>`;
-  paint(`<section class="sv-chooser"><h2>무엇을 만들까요?</h2><div class="sv-cards">
-    ${card('survey', ['객관식·체크박스·단답·장문·척도', '익명으로 받기 가능', '요약 그래프 · CSV'])}
-    ${card('quiz', ['객관식·체크박스·단답 자동 채점', '장문은 직접 채점', '점수표 · 문항별 정답률'])}
-    ${card('reply', ['확인했어요 / 예·아니요 / 직접 선택지', '안 한 학생 바로 보기', '가정통신문 확인 등'])}
+  paint(`<section class="sv-chooser"><h2>무엇을 만들까요?</h2><div class="sv-cards two">
+    ${kindsFor(ctx.cls).map(k => card(k, ITEMS[k])).join('')}
   </div></section>`, `<a class="btn" href="#/t/${F.cls}/forms">취소</a>`);
   $('.sv-cards').onclick = e => {
     const b = e.target.closest('[data-kind]');

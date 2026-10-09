@@ -96,7 +96,11 @@ function formPut_(req) {
   const questions = JSON.stringify(f.questions || []), settings = JSON.stringify(f.settings || {});
   if (!f.id || questions.length > MAX_FORM_JSON_ || !FORM_KINDS_[f.kind]) throw err_('설문을 저장하지 못했어요.');
   const cls = rows_('Classes').find(c => c.id === f.classId);
-  if (!cls || cls.kind === 'homeroom') throw err_('클래스를 찾을 수 없어요.', 'notfound');
+  if (!cls) throw err_('클래스를 찾을 수 없어요.', 'notfound');
+  // teaching classes make quizzes and replies, homeroom classes surveys and replies (older surveys stay editable)
+  const allowed = cls.kind === 'homeroom' ? ['survey', 'reply'] : ['quiz', 'reply'];
+  const existing = rows_('Forms').find(x => x.id === f.id);
+  if (allowed.indexOf(f.kind) < 0 && !(existing && existing.kind === f.kind)) throw err_('이 클래스에서는 만들 수 없는 종류예요.');
   const updated = String(f.updated || now_());
   return withLock_(() => {
     const row = rows_('Forms').find(x => x.id === f.id);

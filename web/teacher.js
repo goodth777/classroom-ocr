@@ -92,7 +92,7 @@ const isHome = c => !!c && c.kind === 'homeroom';
 const sameKind = (v, cls) => v.classes.filter(c => isHome(c) === isHome(cls));
 function tabFor(c, tab) {
   if (tab === 'roster' || tab === 'msg') return tab;
-  if (tab === 'forms' && !isHome(c)) return tab;
+  if (tab === 'forms') return tab;
   return isHome(c) ? 'seats' : 'grid';
 }
 
@@ -134,8 +134,8 @@ function shell(classes, cls, tab, students, body, actions) {
       ${cls ? `<div class="thead">
         <h1>${esc(cls.name)}</h1>${isHome(cls) ? '<span class="chip home">담임 클래스</span>' : ''}<span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
         <nav class="tabs">${isHome(cls)
-          ? `<a class="${tab === 'seats' ? 'on' : ''}" href="#/t/${cls.id}/seats">${fa('chair')}좌석 배치</a>`
-          : `<a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a><a class="${tab === 'forms' ? 'on' : ''}" href="#/t/${cls.id}/forms">${fa('square-poll-horizontal')}설문</a>`}<a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
+          ? `<a class="${tab === 'seats' ? 'on' : ''}" href="#/t/${cls.id}/seats">${fa('chair')}좌석 배치</a><a class="${tab === 'forms' ? 'on' : ''}" href="#/t/${cls.id}/forms">${fa('square-poll-horizontal')}설문·회신</a>`
+          : `<a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a><a class="${tab === 'forms' ? 'on' : ''}" href="#/t/${cls.id}/forms">${fa('graduation-cap')}퀴즈·회신</a>`}<a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
           <a class="${tab === 'msg' ? 'on' : ''}" href="#/t/${cls.id}/msg">${fa('comment-dots')}메시지${cls.unread ? ` <span class="badge">${cls.unread}</span>` : ''}</a></nav>
         <span class="sp"></span>${actions}
       </div>` : ''}
