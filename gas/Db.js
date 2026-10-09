@@ -13,6 +13,7 @@ const HEADERS_ = {
   Seats: ['id', 'classId', 'name', 'layout', 'updated'],
   Forms: ['id', 'classId', 'kind', 'title', 'desc', 'due', 'studentIds', 'questions', 'settings', 'status', 'created', 'updated', 'sent'],
   Responses: ['id', 'formId', 'studentId', 'voter', 'answers', 'score', 'manual', 'submitted'],
+  Lives: ['id', 'classId', 'type', 'title', 'data', 'started', 'ended'],
 };
 
 let db_cache_ = null;
@@ -22,7 +23,7 @@ const sheet_ = name => db_().getSheetByName(name);
 
 // Small tables are cached for a minute in CacheService (a sheet read costs ~0.3s); every read is also
 // memoised for the rest of the request. Writes drop both. Inside withLock_ reads always go to the sheet.
-const CACHED_ = { Classes: true, Students: true, Devices: true, Assignments: true, Announcements: true, AnnReads: true, PushSubs: true, Seats: true, Forms: true };
+const CACHED_ = { Classes: true, Students: true, Devices: true, Assignments: true, Announcements: true, AnnReads: true, PushSubs: true, Seats: true, Forms: true, Lives: true };
 let memo_ = {};
 let fresh_ = false;
 
@@ -57,7 +58,7 @@ function dirty_(name) {
 // Adds sheets and columns introduced after setup() (e.g. Messages, Assignments.studentIds), once.
 function ensureSchema_() {
   const cache = CacheService.getScriptCache();
-  if (cache.get('schema:8')) return;
+  if (cache.get('schema:9')) return;
   Object.keys(HEADERS_).forEach(name => {
     let sh = sheet_(name);
     if (!sh) {
@@ -70,7 +71,7 @@ function ensureSchema_() {
     const head = sh.getRange(1, 1, 1, HEADERS_[name].length).getDisplayValues()[0];
     HEADERS_[name].forEach((k, i) => { if (head[i] !== k) sh.getRange(1, i + 1).setNumberFormat('@').setValue(k); });
   });
-  cache.put('schema:8', '1', 21600);
+  cache.put('schema:9', '1', 21600);
 }
 
 const cells_ = (name, obj) => HEADERS_[name].map(k => (obj[k] == null ? '' : String(obj[k])));

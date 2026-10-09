@@ -6,6 +6,7 @@ import * as outbox from './outbox.js';
 import { homeIcons, homeNotice } from './inbox.js';
 import { pushState, prefs, enablePush, disablePush, setPrefs, pushToken } from './push.js';
 import { quiet } from './api.js';
+import { watchLive } from './slive.js';
 
 let me = null;
 
@@ -181,7 +182,7 @@ function renderHome() {
         <button class="hi" id="profile" aria-label="내 정보"><strong>안녕하세요, ${esc(firstName(name))}님 <span>›</span></strong></button></div>
       ${homeIcons(me)}
     </header>
-    ${banner}${homeNotice(me)}${optinCard()}
+    <div id="liveSlot"></div>${banner}${homeNotice(me)}${optinCard()}
     <section class="s-bento">
       <div class="tile hero"><div class="k">제출 현황</div>
         <div class="ring" style="--p:${pct}"><span>${done.length}/${list.length}</span></div>
@@ -212,6 +213,7 @@ function renderHome() {
       <form method="dialog"><button class="ghost">확인</button></form>
     </dialog>`);
 
+  watchLive('liveSlot');
   $('#profile').onclick = () => $('#menu').showModal();
   $('#clsBtn').onclick = () => $('#clsDlg').showModal();
   $('#clsDlg').onclick = e => {

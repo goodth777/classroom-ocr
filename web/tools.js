@@ -4,6 +4,8 @@ import { render, $, toast } from './ui.js';
 import { esc } from './lib.js';
 import { fa } from './fa.js';
 import { sfx } from './sfx.js';
+import { call, quiet } from './api.js';
+import { drawVote, drawLight, drawHand, drawQuiz } from './live.js';
 import { drawGroups, drawScore, drawNoise, drawClock, drawQr, drawOrder } from './tools2.js';
 
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -23,8 +25,15 @@ const TOOLS = [
   { id: 'clock', name: '수업 시계', sub: '교시 · 남은 시간', icon: 'clock' },
   { id: 'qr', name: 'QR 띄우기', sub: '링크를 큰 QR로', icon: 'qrcode' },
 ];
+// Bundle 3: students answer on their phones (1~3 s behind).
+const LIVE = [
+  { id: 'vote', name: '실시간 투표', sub: '객관식·단어 구름·의견', icon: 'square-poll-horizontal' },
+  { id: 'light', name: '이해도 신호등', sub: '🟢🟡🔴 언제든', icon: 'traffic-light' },
+  { id: 'hand', name: '손들기·질문함', sub: '익명 질문 · 👍 공감', icon: 'hand' },
+  { id: 'quiz', name: '함께 푸는 퀴즈', sub: '한 문제씩 · 순위 없음', icon: 'graduation-cap' },
+];
 const SOON = [
-  ['실시간 투표', 'square-poll-horizontal'], ['이해도 신호등', 'traffic-light'], ['손들기·질문함', 'comment-dots'], ['포스트잇 보드', 'note-sticky'],
+  ['포스트잇 보드', 'note-sticky'], ['모둠 결과 사진', 'camera'],
 ];
 
 let ctx = null;
@@ -33,7 +42,7 @@ let cleanup = null; // stops the open tool's timers/listeners when leaving it
 export function toolsView(c, sub = '') {
   ctx = c;
   if (cleanup) { cleanup(); cleanup = null; }
-  const t = TOOLS.find(x => x.id === sub);
+  const t = [...TOOLS, ...LIVE].find(x => x.id === sub);
   if (!t) return drawHub();
   render(ctx.frame(`<section class="tl-stage" id="tlStage">
       <div class="tl-bar"><a class="btn" href="#/t/${ctx.cls.id}/tools">${fa('chevron-left')}도구 모음</a><b>${t.name}</b><span class="sp"></span>
@@ -48,9 +57,10 @@ export function toolsView(c, sub = '') {
     if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen().catch(() => {});
   };
   if ($('#tlMiniBtn')) $('#tlMiniBtn').onclick = () => { timer.mini = true; if (!timer.total) setTimer(180); paintMini(); };
-  const T = { ctx, acts, body, $, get: lsGet, set: lsSet, sfx, toast, fa, esc };
+  const T = { ctx, acts, body, $, get: lsGet, set: lsSet, sfx, toast, fa, esc, call, quiet };
   cleanup = ({ timer: drawTimer, pick: drawPick, dice: drawDice, board: drawBoard, signal: drawSignal, sound: drawSound,
-    groups: drawGroups, score: drawScore, noise: drawNoise, clock: drawClock, qr: drawQr, order: drawOrder })[t.id](T) || null;
+    groups: drawGroups, score: drawScore, noise: drawNoise, clock: drawClock, qr: drawQr, order: drawOrder,
+    vote: drawVote, light: drawLight, hand: drawHand, quiz: drawQuiz })[t.id](T) || null;
 }
 
 // ---------- hub ----------
@@ -59,10 +69,11 @@ function drawHub() {
   const stars = lsGet('toolStars', ['timer', 'pick']);
   const card = (t, big) => `<a class="tl-card ${big ? 'big' : ''}" href="#/t/${ctx.cls.id}/tools/${t.id}"><span class="tl-ic">${fa(t.icon)}</span><b>${t.name}</b><small>${t.sub}</small>
     <button type="button" class="tl-star ${stars.includes(t.id) ? 'on' : ''}" data-star="${t.id}" aria-label="자주 쓰는 도구로 고정">${fa('star')}</button></a>`;
-  const fav = TOOLS.filter(t => stars.includes(t.id));
+  const fav = [...TOOLS, ...LIVE].filter(t => stars.includes(t.id));
   render(ctx.frame(`<section class="tl-hub">
       ${fav.length ? `<div class="tl-grp">${fa('star')} 자주 쓰는 도구</div><div class="tl-bento">${fav.map(t => card(t, true)).join('')}</div>` : ''}
       <div class="tl-grp">기본 도구 <small>☆을 누르면 위에 고정돼요</small></div><div class="tl-bento">${TOOLS.map(t => card(t)).join('')}</div>
+      <div class="tl-grp">${fa('mobile-screen')} 학생 휴대폰과 함께 <small>학생 앱에 바로 떠요 · 1~3초 늦게 반영</small></div><div class="tl-bento">${LIVE.map(t => card(t)).join('')}</div>
       <div class="tl-grp">곧 추가돼요</div><div class="tl-bento">${SOON.map(([n, i]) => `<div class="tl-card soon"><span class="tl-ic">${fa(i)}</span><b>${n}</b><small>준비 중</small></div>`).join('')}</div>
     </section>`, ''));
   ctx.after();

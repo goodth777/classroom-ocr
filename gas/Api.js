@@ -470,6 +470,15 @@ function routes_() { return {
   tPushSub: { auth: 'teacher', fn: tPushSub_ },
   pushUnsub: { auth: 'none', fn: pushUnsub_ },
   sheetUrl: { auth: 'teacher', fn: sheetUrl_ },
+  live: { auth: 'student', fn: live_ },
+  liveAns: { auth: 'student', fn: liveAns_ },
+  liveStart: { auth: 'teacher', fn: liveStart_ },
+  liveView: { auth: 'teacher', fn: liveView_ },
+  liveCtl: { auth: 'teacher', fn: liveCtl_ },
+  liveEnd: { auth: 'teacher', fn: liveEnd_ },
+  lives: { auth: 'teacher', fn: lives_ },
+  liveRec: { auth: 'teacher', fn: liveRec_ },
+  liveRecDel: { auth: 'teacher', fn: liveRecDel_ },
 }; }
 
 // ---------- one-time setup (run from the Apps Script editor) ----------

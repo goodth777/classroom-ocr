@@ -24,6 +24,7 @@ async function route() {
     if (view === 'notify') return await studentNotify(a);
     if (view === 'f') return await (await import('./sform.js')).formView(a); // loaded only when a form opens
     if (view === 'chat') return await studentChat(a, b);
+    if (view === 'live') return await (await import('./slive.js')).liveView();
     return await studentHome();
   } catch (e) {
     if (e.code !== 'auth') return fail(e);
@@ -44,7 +45,7 @@ addEventListener('hashchange', route);
 // Student back button (Android): the app keeps just two history entries — a home "root" and the current screen.
 // In-app links replace the current screen, so back always goes up (chat about an assignment → that assignment,
 // anything else → home), closes an open sheet first, and on home a second press within 2 s leaves the app.
-const parentOf = h => (/^#\/chat\/a\//.test(h) ? h.replace('#/chat/a/', '#/a/') : /^#\/(a|f|chat|notify)\b/.test(h) || (/^#\/join/.test(h) && store.token()) ? '#/home' : null);
+const parentOf = h => (/^#\/chat\/a\//.test(h) ? h.replace('#/chat/a/', '#/a/') : /^#\/(a|f|chat|notify|live)\b/.test(h) || (/^#\/join/.test(h) && store.token()) ? '#/home' : null);
 let screen = location.hash;
 let lastBack = 0;
 if (!store.key()) {
