@@ -214,7 +214,7 @@ export function arrange(L, studentIds, base = {}, rand = Math.random) {
   seat.forEach((s, i) => { if (s) assign[i] = s; });
   return {
     assign,
-    same: free.filter(sameBad).length + Object.keys(pinned).filter(i => base[i] === pinned[i]).length,
+    same: free.filter(sameBad).length, // pinned students staying put is intended, not counted
     apartFail: free.filter(apartBad).length,
     unseated,
   };
