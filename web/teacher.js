@@ -524,17 +524,25 @@ function drawRoster(v, cls) {
         <p class="muted small">${roster.length - joined ? 'PIN 카드를 다시 나눠 주세요' : '모두 참여했어요 🎉'}</p></div>
     </section>
     <section class="gridcard">
-      <div class="gh"><h2>학생 명단</h2><span class="sp"></span><label class="srch">${fa('magnifying-glass')}<input class="search" id="search" type="search" placeholder="학생 검색" aria-label="학생 검색"></label></div>
+      <div class="gh"><h2>학생 명단</h2><span class="sp"></span>
+        <span id="pickBar">${roster.length ? `<button type="button" class="btn" id="pickOn">${fa('square-check')}선택</button>` : ''}</span>
+        <label class="srch">${fa('magnifying-glass')}<input class="search" id="search" type="search" placeholder="학생 검색" aria-label="학생 검색"></label></div>
       ${roster.length ? `<div class="table-wrap"><table class="roster">
-        <thead><tr><th class="seq">순번</th><th>학번</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
+        <thead><tr><th class="pickcol"></th><th class="seq">순번</th><th>학번</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
         <tbody>${roster.map((s, i) => `<tr data-name="${esc(s.name)}" data-id="${s.id}" data-others="${esc((s.others || []).join(', '))}">
-          <td class="seq">${i + 1}</td><td>${s.sno || `<span class="muted" title="학번 없음">${s.number}번</span>`}</td><td><div class="name">${esc(s.name)}${(s.others || []).length ? `<small class="others">${esc(s.others.join(' · '))}</small>` : ''}</div></td>
+          <td class="pickcol"><button type="button" class="pickbox" data-pick aria-label="선택">${fa('check')}</button></td><td class="seq">${i + 1}</td><td>${s.sno || `<span class="muted" title="학번 없음">${s.number}번</span>`}</td><td><div class="name">${esc(s.name)}${(s.others || []).length ? `<small class="others">${esc(s.others.join(' · '))}</small>` : ''}</div></td>
           <td class="pin" data-pin="${esc(s.pin)}">••••</td>
           <td><span class="st ${s.joined ? 'ok' : 'wait'}">${s.joined ? '참여함' : '대기'}</span></td>
           <td class="muted">${s.lastSubmit ? when(s.lastSubmit) : '–'}</td>
-          <td class="rowacts"><button data-act="show">PIN 보기</button><button data-act="reissue">재발급</button></td></tr>`).join('')}</tbody>
+          <td class="rowacts"><button data-act="show">PIN 보기</button><button data-act="reissue">재발급</button><button data-act="edit">수정</button></td></tr>`).join('')}</tbody>
       </table></div>` : '<p class="empty">아직 학생이 없어요. 오른쪽 위 "명단 붙여넣기"로 학생을 추가해 주세요.</p>'}
     </section>
+    <dialog class="sheet" id="editDlg"><form id="editForm" class="seat-form">
+      <h3>${fa('pen')} 학생 정보 고치기</h3>
+      <div class="row2"><label>학번<input name="sno" inputmode="numeric" maxlength="5" placeholder="예: 20812"></label><label>이름<input name="name" required maxlength="40"></label></div>
+      <p class="muted small">참여 상태, 제출물, PIN은 그대로예요. 다른 클래스에 같은 학번이 있으면 그 PIN으로 맞춰요.</p>
+      <div class="acts"><button type="button" class="btn sv-danger" id="editRemove">${fa('trash-can')}이 클래스에서 빼기</button><span class="sp"></span><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="editGo">저장</button></div>
+    </form></dialog>
     <dialog class="sheet" id="pasteDlg"><form id="pasteForm">
       <h3>학생 명단 붙여넣기</h3>
       <p class="muted small">엑셀이나 나이스에서 <b>학번·이름</b> 두 칸을 복사해 붙여 넣으세요(학번 5자리, 예: 20812 = 2학년 8반 12번). PIN은 자동으로 만들어지고, 다른 클래스에 같은 학번이 있으면 같은 PIN을 써요. 이미 있는 학생에게는 이름으로 학번을 채워 넣어요.</p>
@@ -582,6 +590,7 @@ function drawRoster(v, cls) {
       return;
     }
     const also = tr.dataset.others ? `\n같은 학번이 있는 ${tr.dataset.others}의 PIN도 함께 바뀌어요.` : '';
+    if (b.dataset.act === 'edit') return openEdit(tr);
     if (!confirm(`${tr.dataset.name} 학생의 PIN을 새로 만들까요? 이 학생은 새 PIN으로 다시 참여해야 해요.${also}`)) return;
     b.disabled = true;
     b.textContent = '만드는 중…';
@@ -597,6 +606,60 @@ function drawRoster(v, cls) {
     b.disabled = false;
     b.textContent = '재발급';
   };
+
+  // ---- fix one student / take students out ----
+  const removeIds = async ids => {
+    const names = roster.filter(s => ids.includes(s.id)).map(s => s.name);
+    if (!confirm(`${names.slice(0, 5).join(', ')}${names.length > 5 ? ` 외 ${names.length - 5}명` : ''}을(를) 이 클래스에서 뺄까요?\n빠진 학생은 이 클래스에 더 이상 들어올 수 없어요. 이미 낸 과제·응답은 원본 시트에 남아요.`)) return false;
+    try {
+      const r = await call('removeStudents', { classId: cls.id, ids });
+      toast(`${r.removed}명을 뺐어요`);
+      reload(cls, 'roster');
+      return true;
+    } catch (err) { toast(err.message); return false; }
+  };
+  function openEdit(tr) {
+    const s = roster.find(x => x.id === tr.dataset.id);
+    const f = $('#editForm');
+    f.sno.value = s.sno || '';
+    f.name.value = s.name;
+    $('#editDlg').showModal();
+    $('#editRemove').onclick = async () => { if (await removeIds([s.id])) $('#editDlg').close(); };
+    f.onsubmit = async e => {
+      e.preventDefault();
+      $('#editGo').disabled = true;
+      try {
+        await call('updateStudent', { studentId: s.id, sno: f.sno.value.trim(), name: f.name.value.trim() });
+        $('#editDlg').close();
+        toast('고쳤어요');
+        reload(cls, 'roster');
+      } catch (err) { toast(err.message); }
+      $('#editGo').disabled = false;
+    };
+  }
+  // select mode: tick rows, then take them all out
+  const picked = new Set();
+  const paintPick = () => {
+    $('#pickBar').innerHTML = $('.roster').classList.contains('picking')
+      ? `<button type="button" class="btn" id="pickAll">${picked.size === roster.length ? '전체 해제' : '전체 선택'}</button><button type="button" class="btn sv-danger" id="pickGo" ${picked.size ? '' : 'disabled'}>${fa('trash-can')}선택한 학생 빼기 (${picked.size})</button><button type="button" class="btn" id="pickOff">취소</button>`
+      : `<button type="button" class="btn" id="pickOn">${fa('square-check')}선택</button>`;
+    document.querySelectorAll('.roster tbody tr').forEach(tr => tr.classList.toggle('picked', picked.has(tr.dataset.id)));
+  };
+  if ($('#pickBar')) $('#pickBar').onclick = async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'pickOn') $('.roster').classList.add('picking');
+    else if (b.id === 'pickOff') { $('.roster').classList.remove('picking'); picked.clear(); }
+    else if (b.id === 'pickAll') { if (picked.size === roster.length) picked.clear(); else roster.forEach(s => picked.add(s.id)); }
+    else if (b.id === 'pickGo') { await removeIds([...picked]); return; }
+    paintPick();
+  };
+  if ($('.roster')) $('.roster').addEventListener('click', e => {
+    const tr = e.target.closest('tbody tr');
+    if (!tr || !$('.roster').classList.contains('picking') || e.target.closest('.rowacts')) return;
+    picked.has(tr.dataset.id) ? picked.delete(tr.dataset.id) : picked.add(tr.dataset.id);
+    paintPick();
+  });
 
   $('#paste').onclick = () => $('#pasteDlg').showModal();
   $('#pasteText').oninput = () => {

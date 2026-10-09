@@ -286,6 +286,45 @@ function addStudents_(req) {
     ask: res.ask.map(a => ({ sno: a.sno, name: a.name, candidates: a.candidates.map(id => Object.assign({ id: id }, names[id])) })), roster: roster_(req) };
 }
 
+// Fix a student's 학번/name. Joining, submissions and PIN stay; a 학번 used in another class brings that PIN.
+function updateStudent_(req) {
+  const name = String(req.name || '').trim();
+  const sno = String(req.sno || '').trim();
+  if (!name) throw err_('이름을 입력해 주세요.');
+  if (sno && !/^\d{5}$/.test(sno)) throw err_('학번은 숫자 다섯 자리예요. 예: 20812');
+  return withLock_(() => {
+    const all = rows_('Students');
+    const s = all.find(x => x.id === req.studentId);
+    if (!s) throw err_('학생을 찾을 수 없어요.', 'notfound');
+    if (sno && all.some(x => x.classId === s.classId && x.id !== s.id && x.sno === sno)) throw err_('이 클래스에 같은 학번의 학생이 이미 있어요.');
+    s.name = name;
+    if (sno !== s.sno) {
+      s.sno = sno;
+      if (sno) s.number = +sno.slice(3);
+      const shared = sno && all.find(x => x.sno === sno && x.id !== s.id && x.pin);
+      if (shared) s.pin = shared.pin;
+    }
+    update_('Students', s._row, s);
+    bump_(s.classId);
+    return roster_({ classId: s.classId });
+  });
+}
+
+// Take students out of a class (transfer, course change): their devices stop working here.
+// Submissions, answers and messages stay in the sheet; the app's tables no longer list them.
+function removeStudents_(req) {
+  const ids = new Set((req.ids || []).map(String));
+  return withLock_(() => {
+    const gone = rows_('Students').filter(s => s.classId === req.classId && ids.has(s.id));
+    const devs = rows_('Devices').filter(d => ids.has(d.studentId));
+    deleteRows_('Devices', devs);
+    devs.forEach(d => CacheService.getScriptCache().remove('tok:' + d.tokenHash));
+    deleteRows_('Students', gone);
+    bump_(req.classId);
+    return { removed: gone.length, roster: roster_({ classId: req.classId }) };
+  });
+}
+
 function reissuePin_(req) {
   return withLock_(() => {
     const s = rows_('Students').find(x => x.id === req.studentId);
@@ -425,6 +464,8 @@ function routes_() { return {
   grade: { auth: 'teacher', fn: grade_ },
   formNudge: { auth: 'teacher', fn: formNudge_ },
   upload: { auth: 'teacher', fn: upload_ },
+  updateStudent: { auth: 'teacher', fn: updateStudent_ },
+  removeStudents: { auth: 'teacher', fn: removeStudents_ },
   pushSub: { auth: 'student', fn: pushSub_ },
   tPushSub: { auth: 'teacher', fn: tPushSub_ },
   pushUnsub: { auth: 'none', fn: pushUnsub_ },

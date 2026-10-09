@@ -1143,3 +1143,14 @@ select option { background: var(--card-2); color: var(--ink); }
 .xsheet thead .snocol { z-index: 3; }
 .xsheet .namecol { left: 110px; }
 .roster .seq { width: 52px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+
+/* roster: edit + select to remove */
+.roster .pickcol { display: none; width: 40px; }
+.roster.picking .pickcol { display: table-cell; }
+.roster.picking tbody tr { cursor: pointer; }
+.pickbox { width: 22px; height: 22px; border-radius: 7px; border: 2px solid #5d6862; background: none; display: grid; place-items: center; color: transparent; font-size: 11px; padding: 0; }
+.roster tr.picked .pickbox { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.roster tr.picked td { background: #12211b; }
+#pickBar { display: inline-flex; gap: 6px; }
+#editForm .acts { display: flex; align-items: center; gap: 8px; }
+#editForm .acts .sp { flex: 1; }
