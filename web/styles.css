@@ -1137,3 +1137,9 @@ select option { background: var(--card-2); color: var(--ink); }
 .att-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .sv-attbtn { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; color: var(--muted); cursor: pointer; }
 .sv-attbtn:hover { background: #1b2420; color: var(--ink); }
+
+/* 순번 left of 학번 */
+.xsheet .snocol { position: sticky; left: 46px; z-index: 1; background: #161b19; color: #cfd8d3; font-size: 12.5px; width: 64px; min-width: 64px; text-align: center; padding: 0 4px; font-variant-numeric: tabular-nums; }
+.xsheet thead .snocol { z-index: 3; }
+.xsheet .namecol { left: 110px; }
+.roster .seq { width: 52px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }

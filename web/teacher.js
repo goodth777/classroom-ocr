@@ -287,7 +287,7 @@ function drawGrid(v, cls) {
     const list = grid.students.filter(s => !query || s.name.includes(query));
     if (sortBy === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     else if (sortBy === 'miss') list.sort((a, b) => missOf(b.id) - missOf(a.id) || a.number - b.number);
-    return list.map(s => `<tr data-row="${s.id}"><td class="rownum">${s.sno || s.number}</td><td class="namecol" data-student="${s.id}">${esc(s.name)}<span class="open">현황 ›</span></td>
+    return list.map((s, i) => `<tr data-row="${s.id}"><td class="rownum">${i + 1}</td><td class="snocol">${s.sno || `<span class="muted">${s.number}번</span>`}</td><td class="namecol" data-student="${s.id}">${esc(s.name)}<span class="open">현황 ›</span></td>
       ${grid.works.map(w => cell(s, w)).join('')}<td class="sum"><b>${doneOf(s.id)}</b>/${dueOf(s.id)}</td></tr>`).join('');
   };
 
@@ -312,7 +312,7 @@ function drawGrid(v, cls) {
       <div class="legend"><span><b class="lg ok">제출</b></span><span><b class="lg late">지각</b></span><span><b class="lg no">미제출</b></span><span>▨ 대상 아님</span></div>
     </div>
     ${grid.works.length ? `<div class="sheetwrap"><table class="xsheet">
-      <thead><tr><th class="rownum">#</th><th class="namecol">학생</th>${grid.works.map(w => {
+      <thead><tr><th class="rownum">순번</th><th class="snocol">학번</th><th class="namecol">학생</th>${grid.works.map(w => {
         const st = workStats(w);
         return `<th><button class="wt" data-work="${w.id}" title="눌러서 대상 바꾸기">${esc(w.title)}${w.targets ? ` <span class="tgt">${w.targets.length}명 대상</span>` : ''}</button>
           <small>${esc(shortDue(w.due))} · 제출 ${st.done}/${st.n}</small><span class="rate"><i style="width:${st.n ? Math.round(st.done / st.n * 100) : 0}%"></i></span></th>`;
@@ -526,9 +526,9 @@ function drawRoster(v, cls) {
     <section class="gridcard">
       <div class="gh"><h2>학생 명단</h2><span class="sp"></span><label class="srch">${fa('magnifying-glass')}<input class="search" id="search" type="search" placeholder="학생 검색" aria-label="학생 검색"></label></div>
       ${roster.length ? `<div class="table-wrap"><table class="roster">
-        <thead><tr><th>학번</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
-        <tbody>${roster.map(s => `<tr data-name="${esc(s.name)}" data-id="${s.id}" data-others="${esc((s.others || []).join(', '))}">
-          <td>${s.sno || `<span class="muted" title="학번 없음">${s.number}번</span>`}</td><td><div class="name">${esc(s.name)}${(s.others || []).length ? `<small class="others">${esc(s.others.join(' · '))}</small>` : ''}</div></td>
+        <thead><tr><th class="seq">순번</th><th>학번</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
+        <tbody>${roster.map((s, i) => `<tr data-name="${esc(s.name)}" data-id="${s.id}" data-others="${esc((s.others || []).join(', '))}">
+          <td class="seq">${i + 1}</td><td>${s.sno || `<span class="muted" title="학번 없음">${s.number}번</span>`}</td><td><div class="name">${esc(s.name)}${(s.others || []).length ? `<small class="others">${esc(s.others.join(' · '))}</small>` : ''}</div></td>
           <td class="pin" data-pin="${esc(s.pin)}">••••</td>
           <td><span class="st ${s.joined ? 'ok' : 'wait'}">${s.joined ? '참여함' : '대기'}</span></td>
           <td class="muted">${s.lastSubmit ? when(s.lastSubmit) : '–'}</td>
