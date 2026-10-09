@@ -84,3 +84,8 @@ test('grade: mc, exact-set cb, short variants, long manual, scale ignored', () =
   const partial = grade(qs, { a: 0, b: [0], c: '거울', d: 'x' }, { d: 3 });
   assert.deepStrictEqual([partial.score, partial.pending, partial.per.b.ok, partial.per.d.ok], [3, false, false, false]); // 3 of 4 on the essay: scored, but not fully right
 });
+
+test('grade: a blank essay scores 0 instead of waiting for the teacher', () => {
+  const r = grade([{ id: 'd', type: 'long', points: 4 }], {});
+  assert.deepStrictEqual([r.per.d.ok, r.pending, r.score], [false, false, 0]);
+});

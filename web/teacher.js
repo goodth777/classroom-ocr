@@ -63,11 +63,11 @@ function bindEsc() {
 
 const busyUI = () => document.querySelector('dialog[open], .drawer.open, .board:not([hidden])');
 
-export async function teacherView(classId, tab, sub) {
+export async function teacherView(classId, tab, sub, sub2) {
   const n = currentNav();
   const key = 'view:' + (classId || '');
   const old = store.cache(key);
-  if (old && old.classId) draw(old, tab, sub); else loading('teacher');
+  if (old && old.classId) draw(old, tab, sub, sub2); else loading('teacher');
   let v;
   try {
     v = await call('view', { classId });
@@ -80,7 +80,8 @@ export async function teacherView(classId, tab, sub) {
   store.setCache('view:', v);
   if (!v.classId) return drawEmpty(v);
   if (classId !== v.classId) return location.replace(`#/t/${v.classId}/${tabFor(v.classes.find(c => c.id === v.classId), tab)}`);
-  if (JSON.stringify(v) !== JSON.stringify(old) && !busyUI()) draw(v, tab, sub);
+  // the forms screen keeps its own data; redrawing it under the teacher's typing would lose focus
+  if (JSON.stringify(v) !== JSON.stringify(old) && !busyUI() && (tab !== 'forms' || !(old && old.classId))) draw(v, tab, sub, sub2);
 }
 
 const reload = (cls, tab) => teacherView(cls.id, tab).catch(e => toast(e.message));
@@ -91,15 +92,21 @@ const isHome = c => !!c && c.kind === 'homeroom';
 const sameKind = (v, cls) => v.classes.filter(c => isHome(c) === isHome(cls));
 function tabFor(c, tab) {
   if (tab === 'roster' || tab === 'msg') return tab;
+  if (tab === 'forms' && !isHome(c)) return tab;
   return isHome(c) ? 'seats' : 'grid';
 }
 
-function draw(v, tab, sub) {
+function draw(v, tab, sub, sub2) {
   bindEsc();
   const cls = v.classes.find(c => c.id === v.classId);
   tab = tabFor(cls, tab);
   if (tab === 'msg') return drawMsg(v, cls, sub || '');
   if (tab === 'roster') return drawRoster(v, cls);
+  if (tab === 'forms') {
+    // loaded only when the tab opens, so the app's first screen stays as light as before
+    const frame = { v, cls, frame: (body, actions) => shell(v.classes, cls, 'forms', (v.roster || []).length, body, actions), after: bindShell };
+    return import('./forms.js').then(m => m.formsView(frame, sub || '', sub2 || '')).catch(e => toast(e.message));
+  }
   if (tab === 'seats') {
     return seatsView({
       v, cls,
@@ -128,7 +135,7 @@ function shell(classes, cls, tab, students, body, actions) {
         <h1>${esc(cls.name)}</h1>${isHome(cls) ? '<span class="chip home">담임 클래스</span>' : ''}<span class="chip">${esc([cls.section, `학생 ${students}명`].filter(Boolean).join(' · '))}</span>
         <nav class="tabs">${isHome(cls)
           ? `<a class="${tab === 'seats' ? 'on' : ''}" href="#/t/${cls.id}/seats">${fa('chair')}좌석 배치</a>`
-          : `<a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a>`}<a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
+          : `<a class="${tab === 'grid' ? 'on' : ''}" href="#/t/${cls.id}/grid">${fa('table-cells-large')}과제 현황</a><a class="${tab === 'forms' ? 'on' : ''}" href="#/t/${cls.id}/forms">${fa('square-poll-horizontal')}설문</a>`}<a class="${tab === 'roster' ? 'on' : ''}" href="#/t/${cls.id}/roster">${fa('users')}학생 명단</a>
           <a class="${tab === 'msg' ? 'on' : ''}" href="#/t/${cls.id}/msg">${fa('comment-dots')}메시지${cls.unread ? ` <span class="badge">${cls.unread}</span>` : ''}</a></nav>
         <span class="sp"></span>${actions}
       </div>` : ''}

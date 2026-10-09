@@ -12,7 +12,12 @@ const EMPTY_INBOX = { anns: [], msgs: [], unread: { ann: 0, msg: 0 } };
 const inboxOf = me => me.inbox || EMPTY_INBOX;
 const save = me => store.setCache('me', me);
 // Not submitted (nor waiting in the outbox) and due today or tomorrow.
-const imminent = me => me.assignments.filter(a => a.state !== 'TURNED_IN' && !outbox.forAssignment(a.id) && a.due && dDay(a.due) >= 0 && dDay(a.due) <= 1);
+// Open work with a due date: assignments plus forms not answered yet (forms carry date+time; the date part is enough here).
+const openWork = me => [
+  ...me.assignments.filter(a => a.state !== 'TURNED_IN' && !outbox.forAssignment(a.id) && a.due).map(a => ({ id: a.id, title: a.title, due: a.due, href: `#/a/${a.id}` })),
+  ...(me.forms || []).filter(f => !f.done && f.status === 'live' && f.due && !outbox.forAssignment('f:' + f.id)).map(f => ({ id: f.id, title: f.title, due: f.due.slice(0, 10), href: `#/f/${f.id}` })),
+].filter(a => dDay(a.due) >= 0);
+const imminent = me => openWork(me).filter(a => dDay(a.due) <= 1);
 const dLabel = d => (d > 0 ? `D-${d}` : 'D-day');
 const recount = box => { box.unread = { ann: box.anns.filter(a => !a.read).length, msg: box.msgs.filter(m => m.from === 't' && !m.readAt).length }; };
 const badge = (n, cls = '') => (n ? `<span class="n ${cls}">${n > 99 ? '99+' : n}</span>` : '');
@@ -73,7 +78,7 @@ export async function studentNotify(tab = 'ann') {
 
   function draw() {
     const box = inboxOf(me);
-    const dues = me.assignments.filter(a => a.state !== 'TURNED_IN' && !outbox.forAssignment(a.id) && a.due && dDay(a.due) >= 0)
+    const dues = openWork(me)
       .sort((a, b) => a.due.localeCompare(b.due));
     const tmsgs = box.msgs.filter(m => m.from === 't').reverse();
     const counts = { ann: box.unread.ann, due: imminent(me).length, msg: box.unread.msg };
@@ -87,7 +92,7 @@ export async function studentNotify(tab = 'ann') {
       ann: () => box.anns.map(a => row('#/chat/ann', !a.read, `${a.pinned ? '📌 ' : ''}${esc(a.title)}`, a.body, `<small>${esc(when(a.created))}</small>`)),
       due: () => dues.map(a => {
         const d = dDay(a.due);
-        return row(`#/a/${a.id}`, d <= 1, esc(a.title), `아직 제출하지 않았어요 · ${dueLabel(a.due)} 마감`, `<span class="dd ${d > 1 ? 'far' : ''}">${dLabel(d)}</span>`);
+        return row(a.href, d <= 1, esc(a.title), `아직 제출하지 않았어요 · ${dueLabel(a.due)} 마감`, `<span class="dd ${d > 1 ? 'far' : ''}">${dLabel(d)}</span>`);
       }),
       msg: () => tmsgs.map(m => row('#/chat', !m.readAt, '선생님', m.text, `<small>${esc(when(m.created))}</small>`)),
     }[tab]();

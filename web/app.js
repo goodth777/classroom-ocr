@@ -16,12 +16,13 @@ if (link) {
 // Routes — teacher: #/t/{classId}/{grid|roster|msg}; student: #/a/{id}, #/notify/{tab}, #/chat[/ann|/a/{id}], anything else = home.
 async function route() {
   nextNav();
-  const [, view, a, b, c] = location.hash.split('/');
+  const [, view, a, b, c, d] = location.hash.split('/');
   try {
-    if (store.key()) return await teacherView(view === 't' ? a : '', b, c);
+    if (store.key()) return await teacherView(view === 't' ? a : '', b, c, d);
     if (!store.token() || view === 'join') return joinFlow(view === 'join' ? a : '', !!store.token());
     if (view === 'a') return await studentEditor(a);
     if (view === 'notify') return await studentNotify(a);
+    if (view === 'f') return await (await import('./sform.js')).formView(a); // loaded only when a form opens
     if (view === 'chat') return await studentChat(a, b);
     return await studentHome();
   } catch (e) {
@@ -43,7 +44,7 @@ addEventListener('hashchange', route);
 // Student back button (Android): the app keeps just two history entries — a home "root" and the current screen.
 // In-app links replace the current screen, so back always goes up (chat about an assignment → that assignment,
 // anything else → home), closes an open sheet first, and on home a second press within 2 s leaves the app.
-const parentOf = h => (/^#\/chat\/a\//.test(h) ? h.replace('#/chat/a/', '#/a/') : /^#\/(a|chat|notify)\b/.test(h) || (/^#\/join/.test(h) && store.token()) ? '#/home' : null);
+const parentOf = h => (/^#\/chat\/a\//.test(h) ? h.replace('#/chat/a/', '#/a/') : /^#\/(a|f|chat|notify)\b/.test(h) || (/^#\/join/.test(h) && store.token()) ? '#/home' : null);
 let screen = location.hash;
 let lastBack = 0;
 if (!store.key()) {

@@ -87,7 +87,7 @@ function grade(questions, answers, manual) {
       const want = (q.answer || []).map(Number).sort().join(','), got = (Array.isArray(a) ? a : []).map(Number).sort().join(',');
       ok = want !== '' && want === got;
     } else if (q.type === 'short') ok = (q.answer || []).some(x => normShort(x) !== '' && normShort(x) === normShort(a));
-    else if (q.type === 'long') ok = manual[q.id] === undefined ? null : +manual[q.id] >= pts;
+    else if (q.type === 'long') ok = String(a == null ? '' : a).trim() === '' ? false : manual[q.id] === undefined ? null : +manual[q.id] >= pts; // a blank essay is simply 0
     const got = q.type === 'long' ? (manual[q.id] === undefined ? 0 : Math.max(0, Math.min(pts, +manual[q.id]))) : (ok ? pts : 0);
     if (ok === null) pending = true;
     per[q.id] = { got, max: pts, ok };

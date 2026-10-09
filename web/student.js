@@ -99,7 +99,7 @@ function taskCard(a) {
 // Draws at once from the last known data, then refreshes in the background and redraws only if something changed.
 export async function studentHome() {
   const n = currentNav();
-  me = me || store.cache('me');
+  me = store.cache('me') || me; // the saved copy is current: form answers and the outbox update it from other modules
   const cached = !!me;
   if (cached) renderHome(); else loading('home');
   let changed;
@@ -141,8 +141,27 @@ function switchClass(token) {
   studentHome().catch(e => toast(e.message));
 }
 
+// Surveys, quizzes and replies sit in the same lists as assignments; they open #/f/{id}.
+const FORM_KIND = { survey: ['설문', 'sv-ts', '📊'], quiz: ['퀴즈', 'sv-tq', '🎯'], reply: ['회신', 'sv-tr', '✅'] };
+function formState(fm) {
+  const q = outbox.forAssignment('f:' + fm.id);
+  if (q) return q.status === 'fail' ? 'fail' : 'sending';
+  return fm.done ? 'done' : fm.status === 'closed' ? 'closed' : 'todo';
+}
+function formCard(fm) {
+  const k = formState(fm), [label, cls, icon] = FORM_KIND[fm.kind];
+  const pill = { done: `<span class="pill ok">${fm.result ? `${fm.result.score}/${fm.result.max}점${fm.result.pending ? '+' : ''}` : '제출 완료'}</span>`, sending: '<span class="pill sending">보내는 중</span>',
+    fail: '<span class="pill fail">전송 실패</span>', closed: '<span class="pill">마감됨</span>', todo: '<span class="pill">미제출</span>' }[k];
+  const meta = fm.due ? `📅 ${dueLabel(fm.due.slice(0, 10))} ${fm.due.slice(11, 16)} 마감` : fm.kind === 'reply' ? '버튼 한 번이면 끝나요' : `${fm.anon ? '익명 · ' : ''}${fm.n}문항`;
+  return `<a class="task sv-task ${cls} ${k === 'todo' || k === 'fail' ? '' : 'done'}" href="#/f/${fm.id}">
+    <div class="row"><span class="sv-tag ${cls}">${icon} ${label}</span>${pill}</div><h4>${esc(fm.title)}</h4><div class="meta">${esc(meta)}</div></a>`;
+}
+
 function renderHome() {
   const list = me.assignments;
+  const forms = me.forms || [];
+  const fPending = forms.filter(fm => ['todo', 'fail'].includes(formState(fm)));
+  const fDone = forms.filter(fm => !['todo', 'fail'].includes(formState(fm))).sort((a, b) => String(b.submitted || b.due).localeCompare(String(a.submitted || a.due)));
   const pending = list.filter(a => ['todo', 'fail'].includes(stateOf(a))).sort((a, b) => (a.due || '9').localeCompare(b.due || '9'));
   const done = list.filter(a => ['done', 'sending'].includes(stateOf(a)))
     .sort((a, b) => (stateOf(b) === 'sending') - (stateOf(a) === 'sending') || (b.updated || '').localeCompare(a.updated || ''));
@@ -171,9 +190,10 @@ function renderHome() {
       <div class="tile due"><div class="k">다음 마감</div>
         <div class="v">${next ? dLabel(dDay(next.due)) : '–'}<small>${next ? esc(next.due.slice(5).replace('-', '.')) : ''}</small></div></div>
     </section>
-    <div class="sec"><h3>진행 중</h3><span>${pending.length}</span></div>
-    <div class="tasks">${pending.map(taskCard).join('') || `<p class="empty">${list.length ? '모든 과제를 제출했어요 🎉' : '아직 받은 과제가 없어요'}</p>`}</div>
-    ${done.length ? `<div class="sec"><h3>완료</h3><span>${done.length}</span></div><div class="tasks">${done.map(taskCard).join('')}</div>` : ''}
+    <div class="sec"><h3>진행 중</h3><span>${pending.length + fPending.length}</span></div>
+    <div class="tasks">${[...pending.map(a => [a.due || '9', taskCard(a)]), ...fPending.map(fm => [fm.due ? fm.due.slice(0, 10) : '9', formCard(fm)])]
+      .sort((x, y) => x[0].localeCompare(y[0])).map(x => x[1]).join('') || `<p class="empty">${list.length + forms.length ? '모두 냈어요 🎉' : '아직 받은 과제가 없어요'}</p>`}</div>
+    ${done.length + fDone.length ? `<div class="sec"><h3>완료</h3><span>${done.length + fDone.length}</span></div><div class="tasks">${done.map(taskCard).join('')}${fDone.map(formCard).join('')}</div>` : ''}
     <dialog class="sheet menu" id="menu">
       <div class="menu-head"><div class="av">${esc(name.slice(-2))}</div><div><b>${esc(name)}</b><span>${esc([me.cls.name, me.cls.section, me.student.number + '번'].filter(Boolean).join(' · '))}</span></div></div>
       <div class="settings" id="pushSet">${pushSettings()}</div>
