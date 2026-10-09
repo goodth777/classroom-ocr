@@ -1,5 +1,5 @@
 // Network-first so updates show immediately; cached shell keeps the app opening offline.
-const CACHE = 'shell-v20';
+const CACHE = 'shell-v21';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'ui.js', 'api.js', 'lib.js', 'config.js',
   'store.js', 'outbox.js', 'inbox.js', 'push.js', 'fa.js', 'qr.js', 'vendor/qrcode.js', 'seatlogic.js', 'seats.js', 'seatshow.js', 'formlogic.js', 'forms.js', 'sform.js', 'attach.js', 'join.js', 'student.js', 'teacher.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
 
@@ -12,7 +12,9 @@ self.addEventListener('activate', e => e.waitUntil(
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(fetch(e.request)
+  // no-cache: always ask the server (a cheap 304 when unchanged) so a release shows right away,
+  // instead of GitHub Pages' 10-minute browser cache serving the old files
+  e.respondWith(fetch(e.request, { cache: 'no-cache' })
     .then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); } return r; })
     .catch(() => caches.match(e.request)));
 });
