@@ -79,10 +79,12 @@ export function parseRoster(text) {
   const seen = {};
   const out = [];
   String(text || '').split(/\r?\n/).forEach(line => {
-    const m = /^\s*(\d{1,3})\s*[\t,]?\s*(.+?)\s*$/.exec(line);
-    if (!m || seen[m[1]]) return;
-    seen[m[1]] = true;
-    out.push({ number: +m[1], name: m[2] });
+    const m = /^\s*(\d{5}|\d{1,3})(?!\d)\s*[\t,]?\s*(.+?)\s*$/.exec(line);
+    if (!m) return;
+    const key = m[1].length === 5 ? 's' + m[1] : 'n' + +m[1];
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(m[1].length === 5 ? { sno: m[1], number: +m[1].slice(3), name: m[2] } : { number: +m[1], name: m[2] });
   });
   return out;
 }

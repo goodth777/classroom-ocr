@@ -72,6 +72,9 @@ function gate(st, go) {
   if (st.code && !st.cls) call('peek', { code: st.code }).then(c => { st.cls = c; if ($('#clsName')) $('#clsName').textContent = [c.className, c.section].filter(Boolean).join(' · '); }).catch(() => {});
 }
 
+// 5 digits = 학번; shorter = the number used before 학번 was added to the roster.
+const idOf = v => (String(v).length === 5 ? { sno: String(v) } : { number: +v });
+
 const steps = n => `<div class="steps">${[1, 2, 3].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</div>`;
 
 // First visit only: class code → number → PIN → device token. Afterwards the token opens the app directly.
@@ -126,10 +129,10 @@ export function joinFlow(code = '', adding = false) {
     render(`<section class="join">
       ${steps(2)}
       <div class="found"><div class="ic">📚</div><div><b>${esc(st.cls.className)}</b><span>${esc(st.cls.section)}</span></div></div>
-      <h1>내 번호를<br>입력해 주세요</h1>
-      <p class="lead">선생님 명단에 있는 번호예요.</p>
-      <label class="f">번호<input id="num" class="field" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="예: 12" value="${esc(st.number)}"></label>
-      <label class="f">이름<div class="field name" id="name">번호를 입력하면 이름이 나와요</div></label>
+      <h1>내 학번을<br>입력해 주세요</h1>
+      <p class="lead">다섯 자리 학번이에요. 예: 2학년 8반 12번 → 20812</p>
+      <label class="f">학번<input id="num" class="field" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="예: 20812" value="${esc(st.number)}"></label>
+      <label class="f">이름<div class="field name" id="name">학번을 입력하면 이름이 나와요</div></label>
     </section>
     <div class="dock"><button class="sec" id="back" aria-label="이전">‹</button><button class="main" id="next" disabled>맞아요, 다음</button></div>`);
     const num = $('#num');
@@ -139,11 +142,11 @@ export function joinFlow(code = '', adding = false) {
       $('#next').disabled = true;
       const n = num.value.replace(/\D/g, '');
       num.value = n;
-      if (!n) { $('#name').textContent = '번호를 입력하면 이름이 나와요'; return; }
+      if (!n) { $('#name').textContent = '학번을 입력하면 이름이 나와요'; return; }
       $('#name').textContent = '찾는 중…';
       t = setTimeout(async () => {
         try {
-          const r = await call('peek', { code: st.code, number: +n });
+          const r = await call('peek', { code: st.code, ...idOf(n) });
           if (num.value !== n) return;
           st.number = n;
           st.name = r.name;
@@ -188,7 +191,7 @@ export function joinFlow(code = '', adding = false) {
       busy = true;
       $('#pinNote').textContent = '확인 중…';
       try {
-        const r = await call('join', { code: st.code, number: +st.number, pin: st.pin });
+        const r = await call('join', { code: st.code, ...idOf(st.number), pin: st.pin });
         store.saveClass({ token: r.token, name: r.cls.name, section: r.cls.section, number: r.student.number, student: r.student.name });
         registerClass(r.token);
         lsSet('pendingCode', null);

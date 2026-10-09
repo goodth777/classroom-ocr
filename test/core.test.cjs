@@ -89,3 +89,31 @@ test('grade: a blank essay scores 0 instead of waiting for the teacher', () => {
   const r = grade([{ id: 'd', type: 'long', points: 4 }], {});
   assert.deepStrictEqual([r.per.d.ok, r.pending, r.score], [false, false, 0]);
 });
+
+const { planRoster } = require('../gas/Core.js');
+
+test('parseRoster reads 5-digit student ids (학번) and keeps old number rows', () => {
+  assert.deepStrictEqual(parseRoster('학번 이름\n20812 김민준\n20812 중복\n10101\t강수아\n3 박지호'), [
+    { sno: '20812', number: 12, name: '김민준' },
+    { sno: '10101', number: 1, name: '강수아' },
+    { number: 3, name: '박지호' },
+  ]);
+});
+
+test('planRoster fills ids by unique name, asks on same names, adds the rest', () => {
+  const existing = [
+    { id: 'a', number: 1, name: '강수아', sno: '' },
+    { id: 'b', number: 2, name: '김민준', sno: '' },
+    { id: 'c', number: 3, name: '김민준', sno: '' },
+    { id: 'd', number: 4, name: '박지호', sno: '20804' },
+  ];
+  const plan = planRoster(parseRoster('20801 강수아\n20802 김민준\n20804 박지호\n20805 윤도윤\n6 최하은'), existing);
+  assert.deepStrictEqual(plan.fill, [{ id: 'a', sno: '20801' }]);
+  assert.deepStrictEqual(plan.ask, [{ sno: '20802', name: '김민준', candidates: ['b', 'c'] }]);
+  assert.deepStrictEqual(plan.add, [{ sno: '20805', number: 5, name: '윤도윤' }, { number: 6, name: '최하은' }]);
+  assert.strictEqual(plan.skip, 1);
+  // a teacher's choice settles the same-name case
+  const again = planRoster(parseRoster('20802 김민준'), existing, { 20802: 'c' });
+  assert.deepStrictEqual([again.fill, again.ask, again.add], [[{ id: 'c', sno: '20802' }], [], []]);
+  assert.deepStrictEqual(planRoster(parseRoster('20802 김민준'), existing, { 20802: 'new' }).add, [{ sno: '20802', number: 2, name: '김민준' }]);
+});

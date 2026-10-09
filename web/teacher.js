@@ -286,7 +286,7 @@ function drawGrid(v, cls) {
     const list = grid.students.filter(s => !query || s.name.includes(query));
     if (sortBy === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     else if (sortBy === 'miss') list.sort((a, b) => missOf(b.id) - missOf(a.id) || a.number - b.number);
-    return list.map(s => `<tr data-row="${s.id}"><td class="rownum">${s.number}</td><td class="namecol" data-student="${s.id}">${esc(s.name)}<span class="open">현황 ›</span></td>
+    return list.map(s => `<tr data-row="${s.id}"><td class="rownum">${s.sno || s.number}</td><td class="namecol" data-student="${s.id}">${esc(s.name)}<span class="open">현황 ›</span></td>
       ${grid.works.map(w => cell(s, w)).join('')}<td class="sum"><b>${doneOf(s.id)}</b>/${dueOf(s.id)}</td></tr>`).join('');
   };
 
@@ -407,7 +407,8 @@ function drawGrid(v, cls) {
     drawer.classList.remove('open');
     document.querySelectorAll('#rows tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.row === sid));
     $('#spanel').innerHTML = `
-      <div class="dh"><span class="av big2">${s.number}</span><div><b>${esc(s.name)}</b><span>${esc([cls.name, cls.section, s.number + '번'].filter(Boolean).join(' · '))}${r.lastSubmit ? ` · 마지막 제출 ${esc(when(r.lastSubmit))}` : ''}</span></div><button class="x" data-shut aria-label="닫기">${fa('xmark')}</button></div>
+      <div class="dh"><span class="av big2">${s.number}</span><div><b>${esc(s.name)}</b><span>${esc([s.sno ? `학번 ${s.sno}` : '', cls.name, cls.section, s.number + '번'].filter(Boolean).join(' · '))}${r.lastSubmit ? ` · 마지막 제출 ${esc(when(r.lastSubmit))}` : ''}</span></div><button class="x" data-shut aria-label="닫기">${fa('xmark')}</button></div>
+      ${(r.others || []).length ? `<div class="others-line">${fa('users')} 같은 학번이 있는 클래스: ${esc(r.others.join(' · '))}</div>` : ''}
       <div class="pstats"><div><small>제출</small><b class="a">${doneOf(sid)}</b>/${works.length}</div><div><small>미제출</small><b class="w">${missOf(sid)}</b></div><div><small>지각</small><b>${late}</b></div></div>
       <div class="plist">${works.map(w => {
         const c = cellOf(grid, sid, w.id);
@@ -524,9 +525,9 @@ function drawRoster(v, cls) {
     <section class="gridcard">
       <div class="gh"><h2>학생 명단</h2><span class="sp"></span><label class="srch">${fa('magnifying-glass')}<input class="search" id="search" type="search" placeholder="학생 검색" aria-label="학생 검색"></label></div>
       ${roster.length ? `<div class="table-wrap"><table class="roster">
-        <thead><tr><th>번호</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
-        <tbody>${roster.map(s => `<tr data-name="${esc(s.name)}" data-id="${s.id}">
-          <td>${s.number}</td><td><div class="name">${esc(s.name)}</div></td>
+        <thead><tr><th>학번</th><th>이름</th><th>PIN</th><th>참여</th><th>마지막 제출</th><th></th></tr></thead>
+        <tbody>${roster.map(s => `<tr data-name="${esc(s.name)}" data-id="${s.id}" data-others="${esc((s.others || []).join(', '))}">
+          <td>${s.sno || `<span class="muted" title="학번 없음">${s.number}번</span>`}</td><td><div class="name">${esc(s.name)}${(s.others || []).length ? `<small class="others">${esc(s.others.join(' · '))}</small>` : ''}</div></td>
           <td class="pin" data-pin="${esc(s.pin)}">••••</td>
           <td><span class="st ${s.joined ? 'ok' : 'wait'}">${s.joined ? '참여함' : '대기'}</span></td>
           <td class="muted">${s.lastSubmit ? when(s.lastSubmit) : '–'}</td>
@@ -535,8 +536,8 @@ function drawRoster(v, cls) {
     </section>
     <dialog class="sheet" id="pasteDlg"><form id="pasteForm">
       <h3>학생 명단 붙여넣기</h3>
-      <p class="muted small">엑셀이나 나이스에서 <b>번호·이름</b> 두 칸을 복사해 붙여 넣으세요. PIN은 자동으로 만들어져요. 이미 있는 번호는 건너뛰어요.</p>
-      <textarea name="text" id="pasteText" rows="8" placeholder="1&#9;강수아&#10;2&#9;김민준&#10;3&#9;박지호"></textarea>
+      <p class="muted small">엑셀이나 나이스에서 <b>학번·이름</b> 두 칸을 복사해 붙여 넣으세요(학번 5자리, 예: 20812 = 2학년 8반 12번). PIN은 자동으로 만들어지고, 다른 클래스에 같은 학번이 있으면 같은 PIN을 써요. 이미 있는 학생에게는 이름으로 학번을 채워 넣어요.</p>
+      <textarea name="text" id="pasteText" rows="8" placeholder="20801&#9;강수아&#10;20802&#9;김민준&#10;20803&#9;박지호"></textarea>
       <div class="preview" id="pastePreview">붙여 넣으면 몇 명인지 바로 보여요</div>
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="pasteGo" disabled>추가하고 PIN 만들기</button></div>
     </form></dialog>
@@ -547,7 +548,7 @@ function drawRoster(v, cls) {
         <div class="c">${esc(cls.code)}</div>
         <ol><li>휴대폰 카메라로 QR 찍기</li><li>"앱 설치하기" 누르기</li><li>번호 고르고 PIN 4자리 입력</li></ol></div>
     </div>
-    <div class="print-cards" aria-hidden="true">${roster.map(s => `<div class="pcard"><div class="pq">${qrSvg(link, 2)}</div><div><b>${esc(cls.name)}</b><span>${esc(cls.section)} ${s.number}번 ${esc(s.name)}</span>
+    <div class="print-cards" aria-hidden="true">${roster.map(s => `<div class="pcard"><div class="pq">${qrSvg(link, 2)}</div><div><b>${esc(cls.name)}</b><span>${esc(cls.section)} ${s.sno ? `학번 ${s.sno}` : `${s.number}번`} ${esc(s.name)}</span>
       <div class="pk"><small>수업 코드</small>${esc(cls.code)}</div><div class="pk"><small>PIN</small>${esc(s.pin)}</div>
       <p>카메라로 QR을 찍고 번호와 PIN을 넣으세요</p></div></div>`).join('')}</div>`;
   const actions = `<button class="btn" id="print">${fa('print')}PIN 카드 인쇄</button><button class="btn primary" id="paste">${fa('plus')}명단 붙여넣기</button>`;
@@ -579,7 +580,8 @@ function drawRoster(v, cls) {
       b.textContent = hidden ? 'PIN 숨기기' : 'PIN 보기';
       return;
     }
-    if (!confirm(`${tr.dataset.name} 학생의 PIN을 새로 만들까요? 이 학생은 새 PIN으로 다시 참여해야 해요.`)) return;
+    const also = tr.dataset.others ? `\n같은 학번이 있는 ${tr.dataset.others}의 PIN도 함께 바뀌어요.` : '';
+    if (!confirm(`${tr.dataset.name} 학생의 PIN을 새로 만들까요? 이 학생은 새 PIN으로 다시 참여해야 해요.${also}`)) return;
     b.disabled = true;
     b.textContent = '만드는 중…';
     try {
@@ -597,27 +599,57 @@ function drawRoster(v, cls) {
 
   $('#paste').onclick = () => $('#pasteDlg').showModal();
   $('#pasteText').oninput = () => {
+    // rough preview only; the server decides (same names are asked about after sending)
     const list = parseRoster($('#pasteText').value);
-    const have = new Set(roster.map(s => s.number));
-    const fresh = list.filter(s => !have.has(s.number)).length;
-    $('#pastePreview').textContent = list.length ? `✓ ${list.length}명을 읽었어요 · 새로 추가 ${fresh}명 · 이미 있는 번호 ${list.length - fresh}명` : '번호와 이름을 읽지 못했어요';
-    $('#pasteGo').disabled = !fresh;
-    $('#pasteGo').textContent = fresh ? `${fresh}명 추가하고 PIN 만들기` : '추가하고 PIN 만들기';
+    const has = r => roster.some(s => (r.sno ? s.sno === r.sno : !s.sno && s.number === r.number));
+    const fill = list.filter(r => r.sno && !has(r) && roster.some(s => !s.sno && s.name === r.name)).length;
+    const skip = list.filter(has).length;
+    const fresh = list.length - skip - fill;
+    $('#pastePreview').textContent = list.length ? `✓ ${list.length}명을 읽었어요 · 새로 추가 ${fresh}명${fill ? ` · 학번 채우기 ${fill}명` : ''}${skip ? ` · 이미 있음 ${skip}명` : ''}` : '학번과 이름을 읽지 못했어요';
+    $('#pasteGo').disabled = !(fresh + fill);
+    $('#pasteGo').textContent = fresh + fill ? '명단에 반영하기' : '추가하고 PIN 만들기';
   };
   $('#pasteForm').onsubmit = async e => {
     e.preventDefault();
     $('#pasteGo').disabled = true;
     $('#pasteGo').textContent = '추가하는 중…';
     try {
-      const r = await call('addStudents', { classId: cls.id, text: $('#pasteText').value });
-      $('#pasteDlg').close();
-      toast(`${r.added}명을 추가했어요`);
-      reload(cls, 'roster');
+      const send = async resolve => {
+        const r = await call('addStudents', { classId: cls.id, text: $('#pasteText').value, resolve });
+        if (!r.ask.length) {
+          $('#pasteDlg').close();
+          toast([r.added ? `${r.added}명 추가` : '', r.filled ? `${r.filled}명 학번 채움` : ''].filter(Boolean).join(' · ') || '바뀐 학생이 없어요');
+          return reload(cls, 'roster');
+        }
+        // same names: let the teacher pick who gets which 학번, then send once more
+        const pick = await askSameNames(r.ask);
+        if (pick) return send({ ...resolve, ...pick });
+        $('#pasteGo').disabled = false;
+        $('#pasteGo').textContent = '명단에 반영하기';
+      };
+      await send({});
     } catch (err) {
       $('#pasteGo').disabled = false;
       toast(err.message);
     }
   };
+}
+
+// Same name twice in a class: which existing student gets the 학번 (or a new student)?
+function askSameNames(asks) {
+  return new Promise(resolve => {
+    const d = document.createElement('dialog');
+    d.className = 'sheet';
+    d.innerHTML = `<form method="dialog" class="seat-form"><h3>같은 이름이 있어요</h3>
+      <p class="muted small">학번을 누구에게 넣을지 골라 주세요.</p>
+      ${asks.map(a => `<label class="f">${esc(a.sno)} ${esc(a.name)}<select data-sno="${esc(a.sno)}">${a.candidates.map(c => `<option value="${esc(c.id)}">기존 ${c.number}번 ${esc(c.name)}</option>`).join('')}<option value="new">새 학생으로 추가</option></select></label>`).join('')}
+      <div class="acts"><button type="button" class="btn" data-x>취소</button><button class="btn primary">반영하기</button></div></form>`;
+    document.body.append(d);
+    d.showModal();
+    const done = v => { d.close(); d.remove(); resolve(v); };
+    d.querySelector('[data-x]').onclick = () => done(null);
+    d.querySelector('form').onsubmit = e => { e.preventDefault(); done(Object.fromEntries([...d.querySelectorAll('select')].map(x => [x.dataset.sno, x.value]))); };
+  });
 }
 
 // ---------- 💬 messages: class announcements + one thread per student ----------

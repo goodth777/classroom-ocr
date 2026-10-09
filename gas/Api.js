@@ -72,13 +72,21 @@ const classByCode_ = code => rows_('Classes').find(c => c.code === String(code |
 // ---------- public ----------
 
 // Step 2 of joining: the class name, and the student's name once a number is chosen.
+// A student is found by 학번 (5 digits) or, for rows added before 학번, by number.
+function findInClass_(cls, id) {
+  const v = String(id == null ? '' : id).trim();
+  if (/^\d{5}$/.test(v)) return rows_('Students').find(s => s.classId === cls.id && s.sno === v);
+  return rows_('Students').find(s => s.classId === cls.id && +s.number === +v && !s.sno);
+}
+
 function peek_(req) {
   const cls = classByCode_(req.code);
   if (!cls) throw err_('수업 코드를 다시 확인해 주세요.', 'notfound');
   const out = { className: cls.name, section: cls.section };
-  if (req.number != null) {
-    const st = rows_('Students').find(s => s.classId === cls.id && +s.number === +req.number);
-    if (!st) throw err_('명단에 없는 번호예요. 선생님께 확인해 주세요.', 'notfound');
+  const id = req.sno != null ? req.sno : req.number;
+  if (id != null) {
+    const st = findInClass_(cls, id);
+    if (!st) throw err_('명단에 없는 학번이에요. 선생님께 확인해 주세요.', 'notfound');
     out.name = st.name;
   }
   return out;
@@ -87,10 +95,10 @@ function peek_(req) {
 function join_(req) {
   const cls = classByCode_(req.code);
   if (!cls) throw err_('수업 코드를 다시 확인해 주세요.', 'notfound');
-  const st = rows_('Students').find(s => s.classId === cls.id && +s.number === +req.number);
-  if (!st) throw err_('명단에 없는 번호예요.', 'notfound');
+  const st = findInClass_(cls, req.sno != null ? req.sno : req.number);
+  if (!st) throw err_('명단에 없는 학번이에요.', 'notfound');
   const cache = CacheService.getScriptCache();
-  const k = 'pin:' + st.id;
+  const k = 'pin:' + (st.sno || st.id); // one lock per student across classes
   const tries = +(cache.get(k) || 0);
   if (tries >= PIN_TRIES_) throw err_('PIN을 여러 번 틀렸어요. 10분 뒤에 다시 해 주세요.', 'locked');
   if (String(req.pin) !== st.pin) {
@@ -222,35 +230,57 @@ function roster_(req) {
   const devices = rows_('Devices');
   const last = {};
   rows_('Submissions').forEach(s => { if (!last[s.studentId] || s.submittedAt > last[s.studentId]) last[s.studentId] = s.submittedAt; });
+  // the same 학번 in this teacher's other classes = the same student
+  const classes = rows_('Classes');
+  const others = sno => (sno ? rows_('Students').filter(x => x.sno === sno && x.classId !== req.classId)
+    .map(x => (classes.find(c => c.id === x.classId) || {}).name).filter(Boolean) : []);
   return rows_('Students').filter(s => s.classId === req.classId)
-    .map(s => ({ id: s.id, number: +s.number, name: s.name, pin: s.pin, joined: devices.some(d => d.studentId === s.id), lastSubmit: last[s.id] || '' }))
-    .sort((a, b) => a.number - b.number);
+    .map(s => ({ id: s.id, number: +s.number, name: s.name, sno: s.sno || '', pin: s.pin, joined: devices.some(d => d.studentId === s.id), lastSubmit: last[s.id] || '', others: others(s.sno) }))
+    .sort(bySno);
 }
 
+// Paste "학번 이름" rows: fills 학번 on existing students with a unique name, adds the rest.
+// Same-name cases come back as `ask` (nothing written for them) until the teacher answers via `resolve`.
+// A 학번 already used in another class keeps that PIN, so one PIN card works everywhere.
 function addStudents_(req) {
   const list = parseRoster(req.text);
-  if (!list.length) throw err_('번호와 이름을 읽지 못했어요. "1  홍길동"처럼 한 줄에 한 명씩 붙여 넣어 주세요.');
-  const added = withLock_(() => {
-    const have = new Set(rows_('Students').filter(s => s.classId === req.classId).map(s => +s.number));
-    const fresh = list.filter(s => !have.has(s.number));
-    fresh.forEach(s => append_('Students', { id: newId_(), classId: req.classId, number: s.number, name: s.name, pin: makePin(), created: now_() }));
-    return fresh.length;
+  if (!list.length) throw err_('학번과 이름을 읽지 못했어요. "20812  홍길동"처럼 한 줄에 한 명씩 붙여 넣어 주세요.');
+  const res = withLock_(() => {
+    const all = rows_('Students');
+    const mine = all.filter(s => s.classId === req.classId);
+    const plan = planRoster(list, mine, req.resolve || {});
+    const pinOf = sno => { const o = sno && all.find(s => s.sno === sno && s.pin); return o ? o.pin : makePin(); };
+    plan.fill.forEach(f => {
+      const s = mine.find(x => x.id === f.id);
+      if (!s) return;
+      s.sno = f.sno;
+      const shared = all.find(x => x.sno === f.sno && x.id !== s.id && x.pin);
+      if (shared) s.pin = shared.pin; // devices stay joined; only the next join uses the shared PIN
+      update_('Students', s._row, s);
+    });
+    plan.add.forEach(r => append_('Students', { id: newId_(), classId: req.classId, number: r.number, name: r.name, sno: r.sno || '', pin: pinOf(r.sno), created: now_() }));
+    return plan;
   });
   bump_(req.classId);
-  return { added: added, skipped: list.length - added, roster: roster_(req) };
+  const names = Object.fromEntries(rows_('Students').filter(s => s.classId === req.classId).map(s => [s.id, { number: +s.number, name: s.name }]));
+  return { added: res.add.length, filled: res.fill.length, skipped: res.skip,
+    ask: res.ask.map(a => ({ sno: a.sno, name: a.name, candidates: a.candidates.map(id => Object.assign({ id: id }, names[id])) })), roster: roster_(req) };
 }
 
 function reissuePin_(req) {
   return withLock_(() => {
     const s = rows_('Students').find(x => x.id === req.studentId);
     if (!s) throw err_('학생을 찾을 수 없어요.', 'notfound');
-    s.pin = makePin();
-    update_('Students', s._row, s);
-    const gone = rows_('Devices').filter(d => d.studentId === s.id);
+    // one PIN per 학번: every class row of this student gets the new PIN and must join again
+    const same = s.sno ? rows_('Students').filter(x => x.sno === s.sno) : [s];
+    const pin = makePin();
+    same.forEach(x => { x.pin = pin; update_('Students', x._row, x); });
+    const ids = new Set(same.map(x => x.id));
+    const gone = rows_('Devices').filter(d => ids.has(d.studentId));
     deleteRows_('Devices', gone); // old devices must join again
     gone.forEach(d => CacheService.getScriptCache().remove('tok:' + d.tokenHash));
-    bump_(s.classId);
-    return s.pin;
+    same.forEach(x => bump_(x.classId));
+    return pin;
   });
 }
 

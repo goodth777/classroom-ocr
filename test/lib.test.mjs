@@ -79,6 +79,8 @@ test('lib parseRoster matches the server copy', async () => {
   const core = createRequire(import.meta.url)('../gas/Core.js');
   const text = '번호\t이름\n1\t강수아\n2, 김민준\n\n 3  박지호 \n3\t중복\nabc\t무시\n12\tJohn Kim';
   assert.deepStrictEqual(parseRoster(text), core.parseRoster(text));
+  const ids = '학번 이름\n20812 김민준\n10101\t강수아\n3 박지호';
+  assert.deepStrictEqual(parseRoster(ids), core.parseRoster(ids));
 });
 
 test('summarize and toCsv skip students outside an assignment target', async () => {
