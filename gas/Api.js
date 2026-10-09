@@ -87,7 +87,7 @@ function peek_(req) {
   if (id != null) {
     const st = findInClass_(cls, id);
     if (!st) throw err_('명단에 없는 학번이에요. 선생님께 확인해 주세요.', 'notfound');
-    out.name = st.name;
+    out.name = maskName(st.name); // full name only after the PIN (join)
   }
   return out;
 }

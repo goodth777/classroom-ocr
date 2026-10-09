@@ -117,3 +117,13 @@ test('planRoster fills ids by unique name, asks on same names, adds the rest', (
   assert.deepStrictEqual([again.fill, again.ask, again.add], [[{ id: 'c', sno: '20802' }], [], []]);
   assert.deepStrictEqual(planRoster(parseRoster('20802 김민준'), existing, { 20802: 'new' }).add, [{ sno: '20802', number: 2, name: '김민준' }]);
 });
+
+const { maskName } = require('../gas/Core.js');
+
+test('maskName hides the middle of a name before the PIN is checked', () => {
+  assert.strictEqual(maskName('김민준'), '김*준');
+  assert.strictEqual(maskName('이수'), '이*');
+  assert.strictEqual(maskName('남궁민수'), '남**수');
+  assert.strictEqual(maskName('John Kim'), 'J******m');
+  assert.strictEqual(maskName('가'), '가');
+});

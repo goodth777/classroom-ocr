@@ -53,6 +53,15 @@ function planRoster(rows, existing, resolve) {
   return plan;
 }
 
+// Before the PIN is checked the join screen shows only enough of the name to recognise oneself:
+// 김*준, 이*, 남**수. A leaked class code then no longer reveals the roster.
+function maskName(name) {
+  const c = [...String(name || '')];
+  if (c.length <= 1) return c.join('');
+  if (c.length === 2) return c[0] + '*';
+  return c[0] + '*'.repeat(c.length - 2) + c[c.length - 1];
+}
+
 // Late once past 23:59:59 Korea time on the due date.
 function isLate(submittedAt, due) {
   if (!due) return false;
@@ -126,4 +135,4 @@ function grade(questions, answers, manual) {
   return { score, max, pending, per };
 }
 
-if (typeof module !== 'undefined') module.exports = { makeCode, makePin, parseRoster, isLate, buildGrid, isTarget, targetsOf, normShort, grade, planRoster };
+if (typeof module !== 'undefined') module.exports = { makeCode, makePin, parseRoster, isLate, buildGrid, isTarget, targetsOf, normShort, grade, planRoster, maskName };
