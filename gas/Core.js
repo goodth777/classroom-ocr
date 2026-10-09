@@ -68,4 +68,33 @@ function buildGrid(students, assignments, submissions) {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { makeCode, makePin, parseRoster, isLate, buildGrid, isTarget, targetsOf };
+// Short answers match when letters agree: case, all whitespace and edge punctuation are ignored.
+function normShort(s) {
+  return String(s == null ? '' : s).toLowerCase().replace(/\s+/g, '').replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
+}
+
+// Quiz scoring. Long answers count only once the teacher scores them (manual[qid]); scale is never scored.
+function grade(questions, answers, manual) {
+  manual = manual || {};
+  const per = {};
+  let score = 0, max = 0, pending = false;
+  questions.forEach(q => {
+    if (q.type === 'scale') return;
+    const pts = +q.points || 1, a = answers[q.id];
+    let ok = false;
+    if (q.type === 'mc') ok = a !== undefined && a !== null && a !== '' && +a === +q.answer;
+    else if (q.type === 'cb') {
+      const want = (q.answer || []).map(Number).sort().join(','), got = (Array.isArray(a) ? a : []).map(Number).sort().join(',');
+      ok = want !== '' && want === got;
+    } else if (q.type === 'short') ok = (q.answer || []).some(x => normShort(x) !== '' && normShort(x) === normShort(a));
+    else if (q.type === 'long') ok = manual[q.id] === undefined ? null : +manual[q.id] >= pts;
+    const got = q.type === 'long' ? (manual[q.id] === undefined ? 0 : Math.max(0, Math.min(pts, +manual[q.id]))) : (ok ? pts : 0);
+    if (ok === null) pending = true;
+    per[q.id] = { got, max: pts, ok };
+    score += got;
+    max += pts;
+  });
+  return { score, max, pending, per };
+}
+
+if (typeof module !== 'undefined') module.exports = { makeCode, makePin, parseRoster, isLate, buildGrid, isTarget, targetsOf, normShort, grade };

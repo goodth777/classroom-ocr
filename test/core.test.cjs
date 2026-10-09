@@ -58,3 +58,29 @@ test('isTarget treats an empty list as the whole class', () => {
   assert.strictEqual(isTarget({ studentIds: 's2,s3' }, 's1'), false);
   assert.strictEqual(isTarget({ studentIds: 's2,s1' }, 's1'), true);
 });
+
+const { normShort, grade } = require('../gas/Core.js');
+
+test('normShort ignores case, spaces and edge punctuation', () => {
+  assert.strictEqual(normShort('  Mirror  Neuron. '), 'mirrorneuron');
+  assert.strictEqual(normShort('"거울 신경세포"!'), '거울신경세포');
+});
+
+test('grade: mc, exact-set cb, short variants, long manual, scale ignored', () => {
+  const qs = [
+    { id: 'a', type: 'mc', options: ['x', 'y'], answer: 1, points: 2 },
+    { id: 'b', type: 'cb', options: ['p', 'q', 'r'], answer: [0, 2], points: 3 },
+    { id: 'c', type: 'short', answer: ['거울 신경세포', '거울 뉴런'], points: 5 },
+    { id: 'd', type: 'long', points: 4 },
+    { id: 'e', type: 'scale' },
+  ];
+  const r = grade(qs, { a: 1, b: [2, 0], c: ' 거울뉴런 ', d: 'essay', e: 4 });
+  assert.deepStrictEqual(r.per.a, { got: 2, max: 2, ok: true });
+  assert.deepStrictEqual(r.per.b, { got: 3, max: 3, ok: true });
+  assert.deepStrictEqual(r.per.c, { got: 5, max: 5, ok: true });
+  assert.deepStrictEqual(r.per.d, { got: 0, max: 4, ok: null });
+  assert.strictEqual(r.per.e, undefined);
+  assert.deepStrictEqual([r.score, r.max, r.pending], [10, 14, true]);
+  const partial = grade(qs, { a: 0, b: [0], c: '거울', d: 'x' }, { d: 3 });
+  assert.deepStrictEqual([partial.score, partial.pending, partial.per.b.ok, partial.per.d.ok], [3, false, false, false]); // 3 of 4 on the essay: scored, but not fully right
+});
