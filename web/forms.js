@@ -5,6 +5,7 @@ import { render, $, toast } from './ui.js';
 import { esc } from './lib.js';
 import { fa } from './fa.js';
 import { summarize, missing } from './formlogic.js';
+import { uploadFile, chipsHtml, MAX_FILES } from './attach.js';
 
 const SYNC_MS = 2000;
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -242,10 +243,12 @@ function qCard(f, q, k) {
   else body = `<div class="sv-scale"><input data-lo value="${esc(q.lo || '')}" placeholder="1 이름표 (예: 전혀 아니다)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><input data-hi value="${esc(q.hi || '')}" placeholder="5 이름표 (예: 매우 그렇다)"></div>`;
   const pts = quiz && q.type !== 'scale' ? `<label class="sv-pts">배점 <input type="number" min="0" max="100" data-pts value="${+q.points || 1}"></label>` : '';
   return `<article class="sv-card" data-q="${k}">
+    <div class="att-row">${chipsHtml(q.attach, 'q' + k)}</div>
     <div class="sv-qh"><input class="sv-qt" data-title value="${esc(q.title)}" placeholder="질문"><select data-type aria-label="문항 종류">${TYPES.filter(([t]) => !(quiz && t === 'scale')).map(([t, n]) => `<option value="${t}" ${q.type === t ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     ${body}
     <div class="sv-qf">${pts}<span class="sp"></span>
       <button type="button" data-move="-1" aria-label="위로">${fa('arrow-up')}</button><button type="button" data-move="1" aria-label="아래로">${fa('arrow-down')}</button>
+      <label class="sv-attbtn" aria-label="사진·파일 첨부">${fa('paperclip')}<input type="file" multiple hidden data-attach="q${k}"></label>
       <button type="button" data-dup aria-label="복사">${fa('copy')}</button><button type="button" data-delq aria-label="문항 삭제">${fa('trash-can')}</button>
       <label class="sv-req">필수 <input type="checkbox" class="sv-sw" data-req ${q.required ? 'checked' : ''}></label></div>
   </article>`;
@@ -265,7 +268,8 @@ function drawBuilder(f) {
   const cards = f.kind === 'reply' ? replyCard(f) : f.questions.map((q, k) => qCard(f, q, k)).join('');
   paint(`${header(f, 'q')}${setbar(f)}
     <section class="sv-builder"><div class="sv-col">
-      <article class="sv-card sv-title sv-top-${f.kind}"><input class="sv-tt" id="svTitle" value="${esc(f.title)}" placeholder="제목"><textarea id="svDesc" rows="2" placeholder="안내 (선택)">${esc(f.desc)}</textarea></article>
+      <article class="sv-card sv-title sv-top-${f.kind}"><input class="sv-tt" id="svTitle" value="${esc(f.title)}" placeholder="제목"><textarea id="svDesc" rows="2" placeholder="안내 (선택) · 주소를 쓰면 링크가 돼요">${esc(f.desc)}</textarea>
+        <div class="att-row">${chipsHtml(f.settings.attach, 't')}<label class="att-pick small">${fa('paperclip')} 사진·파일 첨부<input type="file" multiple hidden data-attach="t"></label></div></article>
       ${cards}
       ${f.kind === 'reply' ? '' : `<button type="button" class="sv-addq" id="svAddQ">${fa('circle-plus')} 문항 추가</button>`}
     </div></section>
@@ -282,8 +286,27 @@ function okToRestructure(f) {
   return true;
 }
 
+// Uploads run while the teacher keeps editing; the chip list redraws when each file is in.
+async function attachFiles(f, key, files) {
+  const list = key === 't' ? (f.settings.attach ||= []) : (f.questions[+key.slice(1)].attach ||= []);
+  const room = MAX_FILES - list.length;
+  if (room <= 0) return toast(`첨부는 ${MAX_FILES}개까지예요`);
+  const pick = [...files].slice(0, room);
+  toast(`${pick.length}개 올리는 중…`);
+  for (const file of pick) {
+    try { list.push(await uploadFile(file)); commit(f, { draw: !document.activeElement?.closest('.sv-col input, .sv-col textarea') }); }
+    catch (e) { toast(e.message); }
+  }
+  toast('첨부했어요');
+  if (route.sub === f.id && !route.sub2) drawBuilder(f);
+}
+
 function bindBuilder(f) {
   const col = $('.sv-col');
+  col.addEventListener('change', e => {
+    const inp = e.target.closest('[data-attach]');
+    if (inp && inp.files.length) { attachFiles(f, inp.dataset.attach, inp.files); inp.value = ''; }
+  });
   const q = el => f.questions[+el.closest('[data-q]').dataset.q];
   const structural = fn => { if (!okToRestructure(f)) return drawBuilder(f); fn(); commit(f, { draw: true }); };
   $('#svTitle').oninput = e => { f.title = e.target.value; commit(f); };
@@ -308,6 +331,12 @@ function bindBuilder(f) {
   col.onclick = e => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.unattach) {
+      const [key, i] = b.dataset.unattach.split(':');
+      const list = key === 't' ? f.settings.attach : f.questions[+key.slice(1)].attach;
+      list.splice(+i, 1);
+      return commit(f, { draw: true });
+    }
     if (b.id === 'svAddQ') return structural(() => f.questions.push({ id: qid(), type: 'mc', title: '', required: true, options: ['선택지 1', '선택지 2'], points: 1 }));
     if (b.dataset.reply) {
       const mode = b.dataset.reply;

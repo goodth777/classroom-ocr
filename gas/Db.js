@@ -7,7 +7,7 @@ const HEADERS_ = {
   Assignments: ['id', 'classId', 'title', 'description', 'due', 'created', 'studentIds'],
   Submissions: ['id', 'assignmentId', 'studentId', 'text', 'photoIds', 'submittedAt', 'late'],
   Messages: ['id', 'classId', 'studentId', 'from', 'text', 'assignmentId', 'created', 'readAt'],
-  Announcements: ['id', 'classId', 'title', 'body', 'pinned', 'created'],
+  Announcements: ['id', 'classId', 'title', 'body', 'pinned', 'created', 'attach'],
   AnnReads: ['annId', 'studentId', 'readAt'],
   PushSubs: ['token', 'role', 'studentId', 'classId', 'prefs', 'created'],
   Seats: ['id', 'classId', 'name', 'layout', 'updated'],
@@ -57,7 +57,7 @@ function dirty_(name) {
 // Adds sheets and columns introduced after setup() (e.g. Messages, Assignments.studentIds), once.
 function ensureSchema_() {
   const cache = CacheService.getScriptCache();
-  if (cache.get('schema:7')) return;
+  if (cache.get('schema:8')) return;
   Object.keys(HEADERS_).forEach(name => {
     let sh = sheet_(name);
     if (!sh) {
@@ -70,7 +70,7 @@ function ensureSchema_() {
     const head = sh.getRange(1, 1, 1, HEADERS_[name].length).getDisplayValues()[0];
     HEADERS_[name].forEach((k, i) => { if (head[i] !== k) sh.getRange(1, i + 1).setNumberFormat('@').setValue(k); });
   });
-  cache.put('schema:7', '1', 21600);
+  cache.put('schema:8', '1', 21600);
 }
 
 const cells_ = (name, obj) => HEADERS_[name].map(k => (obj[k] == null ? '' : String(obj[k])));

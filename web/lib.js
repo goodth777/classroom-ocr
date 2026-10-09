@@ -97,3 +97,25 @@ export function when(iso, now = Date.now()) {
   const hm = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
   return days <= 0 ? hm : days === 1 ? `어제 ${hm}` : `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 }
+
+// Escapes text, then turns http(s) addresses into links that open in a new tab. Trailing punctuation stays outside.
+export function linkify(text) {
+  return esc(text).replace(/https?:\/\/[^\s<>"']+/g, url => {
+    const m = /[.,!?;:)\]]+$/.exec(url);
+    const tail = m ? m[0] : '';
+    const href = tail ? url.slice(0, -tail.length) : url;
+    return `<a href="${href}" target="_blank" rel="noopener">${href}</a>${tail}`;
+  });
+}
+
+// Attachments as students see them: photos inline (tap to open), other files as a row with "열기".
+const kb = n => (n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB');
+export function attachHtml(list) {
+  if (!list || !list.length) return '';
+  return `<div class="att">${list.map(a => {
+    const id = encodeURIComponent(a.id), view = `https://drive.google.com/file/d/${id}/view`;
+    return a.mime && a.mime.startsWith('image/')
+      ? `<a class="att-img" href="${view}" target="_blank" rel="noopener"><img src="https://drive.google.com/thumbnail?id=${id}&amp;sz=w1200" alt="${esc(a.name)}" loading="lazy"></a>`
+      : `<a class="att-file" href="${view}" target="_blank" rel="noopener"><span>📄</span><b>${esc(a.name)}</b><small>${kb(a.size || 0)}</small><em>열기</em></a>`;
+  }).join('')}</div>`;
+}

@@ -93,6 +93,8 @@ function forms_(req) {
 
 function formPut_(req) {
   const f = req.form || {};
+  (f.questions || []).forEach(q => { if (q.attach) q.attach = cleanAttach_(q.attach); });
+  if (f.settings && f.settings.attach) f.settings.attach = cleanAttach_(f.settings.attach);
   const questions = JSON.stringify(f.questions || []), settings = JSON.stringify(f.settings || {});
   if (!f.id || questions.length > MAX_FORM_JSON_ || !FORM_KINDS_[f.kind]) throw err_('설문을 저장하지 못했어요.');
   const cls = rows_('Classes').find(c => c.id === f.classId);

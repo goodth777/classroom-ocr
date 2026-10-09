@@ -1117,3 +1117,23 @@ select option { background: var(--card-2); color: var(--ink); }
 .sv-check.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.sv-danger { color: var(--warn); border-color: rgb(255 138 107 / .4); }
 @media (max-width: 720px) { .sv-row.picking { grid-template-columns: 26px minmax(0, 1fr) auto; } }
+
+/* links and attachments */
+.b a, .ann a, .sv-title a, .sv-q a, .notice a { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.att { display: grid; gap: 8px; margin: 8px 0; }
+.att-img img { display: block; max-width: 100%; max-height: 420px; border-radius: 12px; border: 1px solid var(--line); object-fit: contain; background: #101413; }
+.att-file { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #101413; text-decoration: none; }
+.att-file b { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-file small { color: var(--muted); font-size: 11.5px; }
+.att-file em { font-style: normal; color: var(--accent); font-weight: 700; font-size: 13px; }
+.att-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.att-row:empty { display: none; }
+.sv-title .att-row { margin-top: 8px; }
+.att-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 6px 5px 10px; border-radius: 9px; background: #101413; border: 1px solid var(--line); max-width: 260px; overflow: hidden; white-space: nowrap; }
+.att-chip button { border: 0; background: none; color: var(--muted); padding: 2px 4px; }
+.att-pick { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--accent); font-weight: 700; cursor: pointer; padding: 6px 2px; }
+.att-pick small { color: var(--muted); font-weight: 500; }
+.att-pick.small { font-size: 12px; }
+.att-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.sv-attbtn { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; color: var(--muted); cursor: pointer; }
+.sv-attbtn:hover { background: #1b2420; color: var(--ink); }

@@ -105,3 +105,11 @@ test('when labels today, yesterday, older in Korea time', () => {
   assert.strictEqual(when('2026-10-07T16:00:00Z', now), '01:00'); // after midnight KST = today
   assert.strictEqual(when('2026-10-05T23:00:00Z', now), '10/6');
 });
+
+test('linkify escapes text and turns http(s) addresses into safe links', async () => {
+  const { linkify } = await import('../web/lib.js');
+  assert.strictEqual(linkify('보기: https://example.com/a?b=1&c=2. 끝'),
+    '보기: <a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noopener">https://example.com/a?b=1&amp;c=2</a>. 끝');
+  assert.strictEqual(linkify('<b>x</b> javascript:alert(1)'), '&lt;b&gt;x&lt;/b&gt; javascript:alert(1)');
+  assert.strictEqual(linkify('(https://a.kr/x)'), '(<a href="https://a.kr/x" target="_blank" rel="noopener">https://a.kr/x</a>)');
+});

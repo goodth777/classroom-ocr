@@ -6,7 +6,8 @@ import { seatsView } from './seats.js';
 import { pushState, enablePush, disablePush } from './push.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
-import { esc, DONE, assigned, summarize, toCsv, dDay, dueLabel, parseRoster } from './lib.js';
+import { esc, DONE, assigned, summarize, toCsv, dDay, dueLabel, parseRoster, linkify, attachHtml } from './lib.js';
+import { uploadFile, MAX_FILES } from './attach.js';
 
 const kst = iso => new Date(Date.parse(iso) + 9 * 36e5);
 const when = iso => {
@@ -710,7 +711,7 @@ function paintMsg(v, cls) {
       <div class="annlist">${(box ? box.anns : []).map(a => `<article class="ann ${a.pinned ? 'pin' : ''}">
         <div class="h">${a.pinned ? `<span class="tag">${fa('thumbtack')}고정</span>` : ''}${esc(when(a.created))}<span class="sp"></span>
           <button class="lk" data-pin="${a.id}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? '고정 해제' : `${fa('thumbtack')}고정`}</button><button class="lk del" data-del="${a.id}">삭제</button></div>
-        <b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}
+        <b>${esc(a.title)}</b>${a.body ? `<p>${linkify(a.body)}</p>` : ''}${attachHtml(a.attach)}
         <div class="read">읽음 <b>${a.read}/${a.total}</b><span class="rbar"><i style="width:${a.total ? Math.round(a.read / a.total * 100) : 0}%"></i></span>${a.unreadNames.length ? `안 읽음: ${esc(a.unreadNames.join(', '))}` : ''}</div>
       </article>`).join('') || '<p class="empty">아직 공지가 없어요. 오른쪽 위 "새 공지"로 클래스 전체에 알릴 수 있어요.</p>'}</div>`;
   } else if (sel) {
@@ -735,7 +736,9 @@ function paintMsg(v, cls) {
       <h3>${fa('bullhorn')} 새 공지 쓰기</h3>
       <label>받는 사람<select name="classId">${sameKind(v, cls).map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc([c.name, c.section].filter(Boolean).join(' · '))} 전체 (${c.students}명)</option>`).join('')}</select></label>
       <label>제목<input name="title" required placeholder="예: 내일 수행평가 안내"></label>
-      <label>내용<textarea name="body" rows="4" placeholder="학생에게 보일 내용"></textarea></label>
+      <label>내용<textarea name="body" rows="4" placeholder="학생에게 보일 내용 (주소를 쓰면 링크가 돼요)"></textarea></label>
+      <label class="att-pick">${fa('paperclip')} 사진·파일 첨부 <small>10MB까지 · 최대 ${MAX_FILES}개</small><input type="file" name="files" multiple hidden></label>
+      <div class="att-list" id="annFiles"></div>
       <label class="check"><input type="checkbox" name="pinned"> 맨 위에 고정 (학생 홈 화면 맨 위에도 보여요)</label>
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="annGo">공지 보내기</button></div>
     </form></dialog>`;
@@ -757,14 +760,25 @@ function paintMsg(v, cls) {
   annForm.classId.onchange = goLabel;
   goLabel();
   $('#newAnn').onclick = () => $('#annDlg').showModal();
+  let annFiles = [];
+  annForm.files.onchange = () => {
+    annFiles = [...annFiles, ...annForm.files.files].slice(0, MAX_FILES);
+    annForm.files.value = '';
+    $('#annFiles').innerHTML = annFiles.map((x, i) => `<span class="att-chip">${x.type.startsWith('image/') ? '🖼️' : '📄'} ${esc(x.name)}<button type="button" data-rm="${i}" aria-label="빼기">✕</button></span>`).join('');
+  };
+  $('#annFiles').onclick = e => { const b = e.target.closest('[data-rm]'); if (b) { annFiles.splice(+b.dataset.rm, 1); annForm.files.onchange(); } };
   annForm.onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(annForm);
     const btn = $('#annGo');
     btn.disabled = true;
-    btn.textContent = '보내는 중…';
+    btn.textContent = annFiles.length ? '파일 올리는 중…' : '보내는 중…';
     try {
-      await call('postAnn', { classId: f.get('classId'), title: f.get('title'), body: f.get('body'), pinned: !!f.get('pinned') });
+      const attach = [];
+      for (const file of annFiles) attach.push(await uploadFile(file));
+      btn.textContent = '보내는 중…';
+      await call('postAnn', { classId: f.get('classId'), title: f.get('title'), body: f.get('body'), pinned: !!f.get('pinned'), attach });
+      annFiles = [];
       $('#annDlg').close();
       toast('공지를 보냈어요. 학생 앱의 🔔 알림과 홈 화면에 나타나요');
       if (f.get('classId') !== cls.id) return (location.hash = `#/t/${f.get('classId')}/msg/ann`);

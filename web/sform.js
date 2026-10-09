@@ -3,7 +3,7 @@
 import { quiet } from './api.js';
 import { store } from './store.js';
 import { render, $, toast, loading, currentNav, isCurrent } from './ui.js';
-import { esc } from './lib.js';
+import { esc, linkify, attachHtml } from './lib.js';
 import * as outbox from './outbox.js';
 
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -39,7 +39,7 @@ function draw(f) {
   const ans = draft || (f.mine && f.mine.answers) || (q0 && q0.payload.answers) || {};
   const [label] = KIND[f.kind];
   const head = `<header class="topbar"><a href="#/home" class="iconbtn" aria-label="뒤로">‹</a><div class="t"><small>${label}${f.due ? ` · ${dueText(f.due)}` : ''}</small><b>${esc(f.title)}</b></div></header>`;
-  const titleCard = `<article class="sv-card sv-title sv-top-${f.kind}"><h2>${esc(f.title)}</h2>${f.desc ? `<p>${esc(f.desc)}</p>` : ''}</article>`;
+  const titleCard = `<article class="sv-card sv-title sv-top-${f.kind}"><h2>${esc(f.title)}</h2>${f.desc ? `<p>${linkify(f.desc)}</p>` : ''}${attachHtml(f.settings && f.settings.attach)}</article>`;
   const anon = f.kind === 'survey' && f.settings && f.settings.anon ? '<div class="sv-anon">🕶️ 익명 설문이에요. 선생님은 누가 냈는지 볼 수 없어요.</div>' : '';
   const status = q0 ? `<div class="sv-sent ${q0.status === 'fail' ? 'fail' : ''}">${q0.status === 'fail' ? '⚠️ 보내지 못했어요 · <button type="button" data-retry>다시 보내기</button>' : '⏳ 선생님께 보내는 중… 앱을 닫아도 이어서 보내요'}</div>`
     : f.mine ? `<div class="sv-sent ok">✓ ${stamp(f.mine.submitted)}에 냈어요${!locked ? ' · 마감 전까지 고쳐서 다시 낼 수 있어요' : ''}</div>` : !f.open ? '<div class="sv-sent">마감된 설문이에요</div>' : '';
@@ -111,7 +111,7 @@ function qHtml(q, i, v, locked, res) {
   const per = res && res.per && res.per[q.id];
   const key = res && res.keys && res.keys[q.id];
   const mark = per ? (per.ok === true ? `<span class="sv-ok">✓ ${per.got}/${per.max}</span>` : per.ok === false ? `<span class="sv-no">✗ ${per.got}/${per.max}</span>` : '<span class="sv-wait">채점 중</span>') : '';
-  const title = `<div class="sv-q">${i + 1}. ${esc(q.title)}${q.required ? ' <em>*</em>' : ''} ${mark}${q.type === 'cb' ? '<small>해당하는 것을 모두 고르세요</small>' : ''}${q.type === 'scale' && (q.lo || q.hi) ? `<small>1 ${esc(q.lo || '')} · 5 ${esc(q.hi || '')}</small>` : ''}</div>`;
+  const title = `<div class="sv-q">${i + 1}. ${linkify(q.title)}${q.required ? ' <em>*</em>' : ''} ${mark}${q.type === 'cb' ? '<small>해당하는 것을 모두 고르세요</small>' : ''}${q.type === 'scale' && (q.lo || q.hi) ? `<small>1 ${esc(q.lo || '')} · 5 ${esc(q.hi || '')}</small>` : ''}</div>`;
   let body;
   if (q.type === 'mc' || q.type === 'cb') {
     const sel = q.type === 'cb' ? (v || []).map(Number) : empty(v) ? [] : [+v];
@@ -129,7 +129,7 @@ function qHtml(q, i, v, locked, res) {
       : `<input class="sv-ans-in" data-text="${q.id}" value="${esc(v || '')}" placeholder="내 답변" ${locked ? 'disabled' : ''}>`;
     body = field + (key && key.length ? `<div class="sv-key">정답: ${esc(key.join(' · '))}</div>` : '');
   }
-  return `<article class="sv-card" data-card="${q.id}">${title}${body}</article>`;
+  return `<article class="sv-card" data-card="${q.id}">${title}${attachHtml(q.attach)}${body}</article>`;
 }
 
 async function submit(f, answers) {

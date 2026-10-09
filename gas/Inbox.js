@@ -21,7 +21,7 @@ function studentInbox_(who) {
   const sid = who.student.id;
   const reads = new Set(rows_('AnnReads').filter(r => r.studentId === sid).map(r => r.annId));
   const anns = rows_('Announcements').filter(a => a.classId === who.cls.id)
-    .map(a => ({ id: a.id, title: a.title, body: a.body, pinned: a.pinned === 'Y', created: a.created, read: reads.has(a.id) }))
+    .map(a => ({ id: a.id, title: a.title, body: a.body, pinned: a.pinned === 'Y', created: a.created, read: reads.has(a.id), attach: parse_(a.attach, []) }))
     .sort((a, b) => (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)));
   const msgs = rows_('Messages').filter(m => m.studentId === sid).map(msgOut_).sort(byCreated_);
   return { anns: anns, msgs: msgs, unread: { ann: anns.filter(a => !a.read).length, msg: msgs.filter(m => m.from === 't' && !m.readAt).length } };
@@ -89,7 +89,7 @@ function tInbox_(req) {
   const reads = rows_('AnnReads');
   const anns = rows_('Announcements').filter(a => a.classId === req.classId).map(a => {
     const who = new Set(reads.filter(r => r.annId === a.id).map(r => r.studentId));
-    return { id: a.id, title: a.title, body: a.body, pinned: a.pinned === 'Y', created: a.created,
+    return { id: a.id, title: a.title, body: a.body, pinned: a.pinned === 'Y', created: a.created, attach: parse_(a.attach, []),
       read: students.filter(s => who.has(s.id)).length, total: students.length,
       unreadNames: students.filter(s => !who.has(s.id)).sort((x, y) => x.number - y.number).map(s => s.name) };
   }).sort((a, b) => (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)));
@@ -119,7 +119,7 @@ function postAnn_(req) {
   const title = String(req.title || '').trim();
   if (!title) throw err_('공지 제목을 입력해 주세요.');
   if (!rows_('Classes').some(c => c.id === req.classId)) throw err_('클래스를 찾을 수 없어요.', 'notfound');
-  const a = { id: newId_(), classId: req.classId, title: title, body: String(req.body || '').trim(), pinned: req.pinned ? 'Y' : '', created: now_() };
+  const a = { id: newId_(), classId: req.classId, title: title, body: String(req.body || '').trim(), pinned: req.pinned ? 'Y' : '', created: now_(), attach: JSON.stringify(cleanAttach_(req.attach)) };
   withLock_(() => append_('Announcements', a));
   bump_(req.classId);
   notifyStudents_(rows_('Students').filter(s => s.classId === req.classId).map(s => s.id), 'ann',

@@ -145,6 +145,25 @@ function ocr_(base64) {
   }
 }
 
+// Teacher attachment (photo/file) for forms and announcements: saved in Drive '과제 제출/첨부' and shared by link,
+// so students load it straight from Google, not through this script.
+const MAX_UPLOAD_ = 10 * 1024 * 1024;
+function upload_(req) {
+  const bytes = Utilities.base64Decode(String(req.data || ''));
+  if (!bytes.length || bytes.length > MAX_UPLOAD_) throw err_('파일은 10MB까지 올릴 수 있어요.');
+  const name = String(req.name || '첨부').slice(0, 120);
+  const file = folder_(DriveApp.getFolderById(prop_('FOLDER_ID')), '첨부').createFile(Utilities.newBlob(bytes, String(req.mime || 'application/octet-stream'), name));
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { id: file.getId(), name: name, mime: file.getMimeType(), size: bytes.length };
+}
+
+// Attachments arrive as [{id, name, mime, size}]; anything else is dropped.
+function cleanAttach_(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 5)
+    .filter(a => a && /^[\w-]{10,}$/.test(String(a.id)))
+    .map(a => ({ id: String(a.id), name: String(a.name || '첨부').slice(0, 120), mime: String(a.mime || ''), size: +a.size || 0 }));
+}
+
 function folder_(parent, name) {
   const it = parent.getFoldersByName(name);
   return it.hasNext() ? it.next() : parent.createFolder(name);
@@ -405,6 +424,7 @@ function routes_() { return {
   responses: { auth: 'teacher', fn: responses_ },
   grade: { auth: 'teacher', fn: grade_ },
   formNudge: { auth: 'teacher', fn: formNudge_ },
+  upload: { auth: 'teacher', fn: upload_ },
   pushSub: { auth: 'student', fn: pushSub_ },
   tPushSub: { auth: 'teacher', fn: tPushSub_ },
   pushUnsub: { auth: 'none', fn: pushUnsub_ },

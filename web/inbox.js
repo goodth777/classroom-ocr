@@ -2,7 +2,7 @@
 import { call, quiet } from './api.js';
 import { store } from './store.js';
 import { render, loading, $, toast, currentNav, isCurrent } from './ui.js';
-import { esc, dDay, dueLabel, when } from './lib.js';
+import { esc, dDay, dueLabel, when, linkify, attachHtml } from './lib.js';
 import * as outbox from './outbox.js';
 
 const POLL_MS = 4000;
@@ -124,7 +124,7 @@ export function bubbles(msgs, mine, titleOf) {
     const me = m.from === mine;
     const ref = m.assignmentId && titleOf(m.assignmentId) ? `<span class="ref">📝 ${esc(titleOf(m.assignmentId))}</span>` : '';
     const meta = m.pending ? '보내는 중…' : `${when(m.created)}${me && m.readAt ? ' · 읽음' : ''}`;
-    return `${sep}<div class="b ${me ? 'me' : 'them'}">${ref}${esc(m.text)}</div><div class="meta ${me ? 'r' : ''}">${esc(meta)}</div>`;
+    return `${sep}<div class="b ${me ? 'me' : 'them'}">${ref}${linkify(m.text)}</div><div class="meta ${me ? 'r' : ''}">${esc(meta)}</div>`;
   }).join('');
 }
 
@@ -164,7 +164,7 @@ export async function studentChat(tab, arg) {
       <a href="#/chat/ann" class="${view === 'ann' ? 'on' : ''}">클래스 공지${badge(view === 'ann' ? 0 : box.unread.ann, 'i')}</a></nav>`;
     const body = view === 'ann'
       ? box.anns.map(a => `<article class="ann ${a.pinned ? 'pin' : ''}"><div class="h">${a.pinned ? '<span class="tag">📌 고정</span>' : ''}${esc(when(a.created))}</div>
-          <b>${esc(a.title)}</b>${a.body ? `<p>${esc(a.body)}</p>` : ''}</article>`).join('') || '<p class="empty">아직 공지가 없어요</p>'
+          <b>${esc(a.title)}</b>${a.body ? `<p>${linkify(a.body)}</p>` : ''}${attachHtml(a.attach)}</article>`).join('') || '<p class="empty">아직 공지가 없어요</p>'
       : `<div class="thread" id="thread">${bubbles(box.msgs, 's', titleOf) || '<p class="empty">궁금한 점을 선생님께 물어보세요.<br>과제 화면의 💬에서 물어보면 어떤 과제인지 같이 전해져요.</p>'}</div>`;
     render(`<header class="topbar"><a href="#/home" class="iconbtn" aria-label="뒤로">‹</a><div class="av">T</div>
         <div class="t"><b>선생님</b><small>${esc(me.cls.name)}</small></div></header>
