@@ -8,7 +8,7 @@ const NAMES = ['table-cells-large', 'users', 'comment-dots', 'bullhorn', 'plus',
   'table-columns', 'border-all', 'user-graduate', 'chalkboard-user', 'arrows-left-right', 'eraser', 'chevron-right', 'volume-high', 'check', 'square-poll-horizontal', 'graduation-cap', 'reply', 'circle-dot', 'square-check',
   'grip-lines', 'align-left', 'ellipsis', 'paper-plane', 'lock', 'user-secret', 'eye', 'star', 'circle-plus', 'arrow-up', 'arrow-down',
   'pen', 'inbox', 'chevron-left', 'paperclip', 'toolbox', 'stopwatch', 'user-check', 'dice', 'font', 'traffic-light',
-  'bell', 'circle-xmark', 'hands-clapping', 'hourglass-half', 'drum', 'trophy', 'play', 'pause', 'coins', 'dharmachakra', 'compress', 'minus', 'people-group', 'clock', 'qrcode', 'note-sticky', 'volume-xmark'];
+  'bell', 'circle-xmark', 'hands-clapping', 'hourglass-half', 'drum', 'trophy', 'play', 'pause', 'coins', 'dharmachakra', 'compress', 'minus', 'people-group', 'clock', 'qrcode', 'note-sticky', 'volume-xmark', 'link', 'microphone', 'list-ol'];
 const out = {};
 for (const n of NAMES) {
   const svg = await (await fetch(`https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@${V}/svgs/solid/${n}.svg`)).text();

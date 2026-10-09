@@ -4,6 +4,7 @@ import { render, $, toast } from './ui.js';
 import { esc } from './lib.js';
 import { fa } from './fa.js';
 import { sfx } from './sfx.js';
+import { drawGroups, drawScore, drawNoise, drawClock, drawQr, drawOrder } from './tools2.js';
 
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -15,9 +16,14 @@ const TOOLS = [
   { id: 'board', name: '큰 글씨 판', sub: '지시문·단어 크게', icon: 'font' },
   { id: 'signal', name: '활동 신호판', sub: '조용히·모둠 활동', icon: 'traffic-light' },
   { id: 'sound', name: '효과음판', sub: '집중 종·딩동', icon: 'bell' },
+  { id: 'groups', name: '모둠 편성', sub: '규칙·모둠장·인쇄', icon: 'people-group' },
+  { id: 'score', name: '모둠 점수판', sub: '숫자키로 +1', icon: 'trophy' },
+  { id: 'order', name: '발표 순서', sub: '학생·모둠 차례', icon: 'list-ol' },
+  { id: 'noise', name: '소음 측정기', sub: '마이크 · 저장 안 함', icon: 'microphone' },
+  { id: 'clock', name: '수업 시계', sub: '교시 · 남은 시간', icon: 'clock' },
+  { id: 'qr', name: 'QR 띄우기', sub: '링크를 큰 QR로', icon: 'qrcode' },
 ];
 const SOON = [
-  ['모둠 편성', 'people-group'], ['모둠 점수판', 'trophy'], ['소음 측정기', 'volume-high'], ['수업 시계', 'clock'], ['QR 띄우기', 'qrcode'],
   ['실시간 투표', 'square-poll-horizontal'], ['이해도 신호등', 'traffic-light'], ['손들기·질문함', 'comment-dots'], ['포스트잇 보드', 'note-sticky'],
 ];
 
@@ -42,7 +48,9 @@ export function toolsView(c, sub = '') {
     if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen().catch(() => {});
   };
   if ($('#tlMiniBtn')) $('#tlMiniBtn').onclick = () => { timer.mini = true; if (!timer.total) setTimer(180); paintMini(); };
-  cleanup = ({ timer: drawTimer, pick: drawPick, dice: drawDice, board: drawBoard, signal: drawSignal, sound: drawSound })[t.id]() || null;
+  const T = { ctx, acts, body, $, get: lsGet, set: lsSet, sfx, toast, fa, esc };
+  cleanup = ({ timer: drawTimer, pick: drawPick, dice: drawDice, board: drawBoard, signal: drawSignal, sound: drawSound,
+    groups: drawGroups, score: drawScore, noise: drawNoise, clock: drawClock, qr: drawQr, order: drawOrder })[t.id](T) || null;
 }
 
 // ---------- hub ----------
