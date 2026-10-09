@@ -901,3 +901,6 @@ button.pitem:hover { border-color: var(--deep-line); }
 .seat-wrap .seat-grid { gap: var(--seat-gap, 10px); }
 .seat-wrap .seat-cell { font-size: clamp(11px, calc(var(--seat-w) / 7), 15px); }
 @media (max-width: 520px) { .seat-wrap { padding: 12px 10px; } .seat-cell small { display: none; } .seat-wrap .seat-cell b { padding: 0 1px; text-overflow: clip; letter-spacing: -.03em; } }
+
+/* native dropdown list follows the dark theme (was white with a light-blue highlight) */
+select option { background: var(--card-2); color: var(--ink); }

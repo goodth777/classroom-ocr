@@ -1,5 +1,5 @@
 // Network-first so updates show immediately; cached shell keeps the app opening offline.
-const CACHE = 'shell-v13';
+const CACHE = 'shell-v14';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'ui.js', 'api.js', 'lib.js', 'config.js',
   'store.js', 'outbox.js', 'inbox.js', 'push.js', 'fa.js', 'qr.js', 'vendor/qrcode.js', 'seatlogic.js', 'seats.js', 'seatshow.js', 'join.js', 'student.js', 'teacher.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
 

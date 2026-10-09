@@ -87,6 +87,8 @@ const reload = (cls, tab) => teacherView(cls.id, tab).catch(e => toast(e.message
 
 // Homeroom classes open on seats and have no assignment grid; teaching classes have no seats.
 const isHome = c => !!c && c.kind === 'homeroom';
+// Dialogs that pick a class (new announcement, new assignment) only offer classes of the open class's kind.
+const sameKind = (v, cls) => v.classes.filter(c => isHome(c) === isHome(cls));
 function tabFor(c, tab) {
   if (tab === 'roster' || tab === 'msg') return tab;
   return isHome(c) ? 'seats' : 'grid';
@@ -323,7 +325,7 @@ function drawGrid(v, cls) {
       <label>안내<textarea name="description" rows="2" placeholder="학생에게 보일 안내 (선택)"></textarea></label>
       <div class="row2">
         <label>마감일<input type="date" name="due" value="${weekLater()}"></label>
-        <label>클래스<select name="classId" id="newClass">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <label>클래스<select name="classId" id="newClass">${sameKind(v, cls).map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       </div>
       <div id="newPick">${pickerHtml(grid.students, new Set(), true)}</div>
       <div class="acts"><button type="button" class="btn" data-close>취소</button><button class="btn primary" id="create">클래스 전체에게 과제 내기</button></div>
@@ -692,7 +694,7 @@ function paintMsg(v, cls) {
     </div>
     <dialog class="sheet wide" id="annDlg"><form id="annForm">
       <h3>${fa('bullhorn')} 새 공지 쓰기</h3>
-      <label>받는 사람<select name="classId">${v.classes.map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc([c.name, c.section].filter(Boolean).join(' · '))} 전체 (${c.students}명)</option>`).join('')}</select></label>
+      <label>받는 사람<select name="classId">${sameKind(v, cls).map(c => `<option value="${c.id}" ${c.id === cls.id ? 'selected' : ''}>${esc([c.name, c.section].filter(Boolean).join(' · '))} 전체 (${c.students}명)</option>`).join('')}</select></label>
       <label>제목<input name="title" required placeholder="예: 내일 수행평가 안내"></label>
       <label>내용<textarea name="body" rows="4" placeholder="학생에게 보일 내용"></textarea></label>
       <label class="check"><input type="checkbox" name="pinned"> 맨 위에 고정 (학생 홈 화면 맨 위에도 보여요)</label>
