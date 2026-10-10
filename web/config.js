@@ -11,3 +11,6 @@ export const FIREBASE = {
   appId: '1:808359488746:web:a0dedb354df012fe3efb93',
 };
 export const VAPID_KEY = 'BCcKiHgOe58ajkXMpWQpQikVUOdPuQOX_fKO1VrSAjQAg-p6oUXqNkvsiNa-NfR_ssnZChPJfTSeUCQfirKeAbM';
+
+// Firebase Realtime Database for live classroom activities (public address; access is guarded by its rules).
+export const LIVE_DB = 'https://classroom-ocr-51580-default-rtdb.asia-southeast1.firebasedatabase.app';

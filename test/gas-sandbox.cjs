@@ -38,7 +38,8 @@ function sandbox(seed = {}) {
     insertSheet: n => (sheets[n] = makeSheet([])),
     getUrl: () => 'https://sheet',
   };
-  const props = { DB_ID: 'db', TEACHER_KEY: 'teacher-key', FOLDER_ID: 'f' };
+  const props = { DB_ID: 'db', TEACHER_KEY: 'teacher-key', FOLDER_ID: 'f', ...(seed._props || {}) };
+  const fetched = [];
   const ctx = {
     console, JSON, Math, Date, Object, Array, String, Number, Set, Map, Error, RegExp, Boolean, parseInt, isNaN,
     CacheService: { getScriptCache: () => cache },
@@ -49,17 +50,19 @@ function sandbox(seed = {}) {
       DigestAlgorithm: { SHA_256: 'sha256' },
       computeDigest: (_, s) => [...crypto.createHash('sha256').update(String(s)).digest()].map(b => (b > 127 ? b - 256 : b)),
       getUuid: () => crypto.randomUUID(),
+      base64EncodeWebSafe: x => { const b = Buffer.from(typeof x === 'string' ? x : Uint8Array.from(x.map(v => v & 255))).toString('base64url'); return b + '='.repeat((4 - b.length % 4) % 4); },
+      computeRsaSha256Signature: (data, pem) => [...crypto.createSign('RSA-SHA256').update(data).sign(pem)].map(b => (b > 127 ? b - 256 : b)),
       formatDate: (d, _tz, fmt) => new Date(d.getTime() + 9 * 36e5).toISOString().slice(0, fmt.includes('HH') ? 16 : 10),
     },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => ({ text: s }) }) },
-    UrlFetchApp: { fetchAll: () => [] },
+    UrlFetchApp: { fetchAll: () => [], fetch: (url, opt) => { fetched.push({ url, opt }); return { getResponseCode: () => 200, getContentText: () => (/oauth2/.test(url) ? '{"access_token":"at"}' : '{}') }; } },
   };
   vm.createContext(ctx);
   const dir = path.join(__dirname, '..', 'gas');
   // like Apps Script: every file is its own script in one shared global scope
   fs.readdirSync(dir).filter(f => f.endsWith('.js')).sort().forEach(f => vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx, { filename: f }));
   vm.runInContext('ensureSchema_()', ctx);
-  Object.entries(seed).forEach(([name, objs]) => {
+  Object.entries(seed).filter(([name]) => name !== '_props').forEach(([name, objs]) => {
     const head = vm.runInContext(`HEADERS_[${JSON.stringify(name)}]`, ctx);
     objs.forEach(o => sheets[name].appendRow(head.map(k => (o[k] == null ? '' : String(o[k])))));
   });
@@ -68,7 +71,7 @@ function sandbox(seed = {}) {
     return JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(req) } }).text);
   };
   const tokenHash = t => crypto.createHash('sha256').update(t).digest('hex');
-  return { post, sheets, cache: store, ctx, tokenHash };
+  return { post, sheets, cache: store, ctx, tokenHash, props, fetched };
 }
 
 module.exports = { sandbox };

@@ -1355,3 +1355,5 @@ dialog.lv-recdlg { width: min(1100px, 96vw); max-height: 90vh; overflow: auto; }
 .lv-q4 button:active { transform: scale(.97); }
 .lv-res, .lv-done { text-align: center; padding: 40px 0 10px; display: grid; gap: 8px; justify-items: center; }
 .lv-res .big, .lv-done .big { font-size: 72px; line-height: 1; } .lv-res b, .lv-done b { font-size: 28px; color: var(--accent); } .lv-res b.no { color: #ffc58a; } .lv-res small, .lv-done small { color: var(--muted); font-size: 15px; }
+.lv-pill.off, .lv-dot.off { background: rgb(255 197 138 / .14); color: #ffc58a; }
+.lv-pill.off i, .lv-dot.off i { background: #ffc58a; }

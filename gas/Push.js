@@ -11,23 +11,24 @@ function fcmKey_() {
   return raw ? JSON.parse(raw) : null;
 }
 
-// OAuth access token for the service account (signed JWT → token), cached for 50 minutes.
-function fcmAccess_(key) {
+// OAuth access token for the service account (signed JWT → token) for the given scopes, cached for 50 minutes.
+const fcmAccess_ = key => saToken_(key, FCM_SCOPE_);
+function saToken_(key, scope) {
   const cache = CacheService.getScriptCache();
-  const hit = cache.get('fcm:at');
+  const hit = cache.get('sa:' + scope);
   if (hit) return hit;
   const b64 = s => Utilities.base64EncodeWebSafe(s).replace(/=+$/, '');
   const now = Math.floor(Date.now() / 1000);
   const head = b64(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const claim = b64(JSON.stringify({ iss: key.client_email, scope: FCM_SCOPE_, aud: key.token_uri, iat: now, exp: now + 3600 }));
+  const claim = b64(JSON.stringify({ iss: key.client_email, scope, aud: key.token_uri, iat: now, exp: now + 3600 }));
   const sig = b64(Utilities.computeRsaSha256Signature(head + '.' + claim, key.private_key));
   const res = UrlFetchApp.fetch(key.token_uri, {
     method: 'post', muteHttpExceptions: true,
     payload: { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: head + '.' + claim + '.' + sig },
   });
   const at = JSON.parse(res.getContentText()).access_token;
-  if (!at) throw new Error('FCM token: ' + res.getContentText());
-  cache.put('fcm:at', at, 3000);
+  if (!at) throw new Error('service account token: ' + res.getContentText());
+  cache.put('sa:' + scope, at, 3000);
   return at;
 }
 

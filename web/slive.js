@@ -1,62 +1,95 @@
 // Live activities on the student's phone (#/live) and the "지금 수업 활동" banner on home.
-// Taps update the screen at once and are sent in the background; the screen polls every 2.5 s.
-import { call, quiet } from './api.js';
-import { render, toast, currentNav, isCurrent } from './ui.js';
+// Both follow the class's activity in Firebase Realtime Database over a stream, so a change on the teacher's
+// screen shows here in well under a second. Taps change the screen at once and are written in the background.
+import { toast, render, currentNav, isCurrent } from './ui.js';
 import { esc } from './lib.js';
+import { store } from './store.js';
+import { session, listen, db } from './fb.js';
+import { quizPoints, quizTotal, list } from './livecore.js';
 
 const SHAPES = ['▲', '◆', '●', '■', '★', '♥'];
 const QCOLORS = ['#e2574c', '#3f7fe0', '#d9a520', '#2aa772', '#9b6ad6', '#e0679e'];
 const LIGHTS = [['🟢', '이해했어요'], ['🟡', '조금 헷갈려요'], ['🔴', '모르겠어요']];
 const TITLE = { vote: ['📊', '투표'], word: ['☁️', '단어'], text: ['💬', '한 줄 의견'], light: ['🚦', '이해도'], quiz: ['🎯', '퀴즈'] };
+// an ended activity, or one the teacher forgot to end (3 hours), no longer shows
+const fresh = st => !!(st && st.id && TITLE[st.type] && !st.ended && Date.now() - (+st.started || 0) < 3 * 36e5);
+
+// Follows this class's activity: starts after the one-time sign-in (retried until it works), returns stop().
+function followClass(onValue, onStatus = () => {}, onSession = () => {}) {
+  let stop = null, stopped = false, timer = 0;
+  const go = () => session().then(s => { if (stopped) return; onSession(s); stop = listen(`live/${s.c}`, onValue, onStatus); })
+    .catch(e => { if (stopped) return; onStatus('offline', e); if (e.code !== 'auth') timer = setTimeout(go, 5000); });
+  go();
+  return () => { stopped = true; clearTimeout(timer); if (stop) stop(); };
+}
 
 // ---------- home banner ----------
 
-let bannerTimer = 0;
-let lastLive = null; // repainted at once when home redraws, so the banner does not blink
+const banner = { slot: '', tok: '', last: null, stop: null, timer: 0 };
+const paintBanner = () => {
+  const el = document.getElementById(banner.slot), d = banner.last;
+  if (el) el.innerHTML = fresh(d) ? `<a class="lv-banner" href="#/live"><span class="e">${TITLE[d.type][0]}</span><span><b>지금 수업 활동</b><small>${esc(TITLE[d.type][1])}${d.q ? ' · ' + esc(d.q) : ''}</small></span><span class="go">참여</span></a>` : '';
+};
+// the stream stays open only while home is on screen (and is switched with the class)
+const checkBanner = () => {
+  const on = !!document.getElementById(banner.slot) && document.visibilityState === 'visible';
+  const tok = store.token();
+  if (banner.stop && (!on || banner.tok !== tok)) { banner.stop(); banner.stop = null; }
+  if (banner.tok !== tok) { banner.tok = tok; banner.last = null; paintBanner(); }
+  if (on && !banner.stop) banner.stop = followClass(v => { banner.last = v; paintBanner(); });
+  if (!document.getElementById(banner.slot)) { clearInterval(banner.timer); banner.timer = 0; }
+};
 export function watchLive(slot) {
-  clearInterval(bannerTimer);
-  const paint = d => {
-    lastLive = d && TITLE[d.type] ? d : null;
-    const el = document.getElementById(slot);
-    if (!el) return clearInterval(bannerTimer);
-    el.innerHTML = lastLive ? `<a class="lv-banner" href="#/live"><span class="e">${TITLE[d.type][0]}</span><span><b>지금 수업 활동</b><small>${esc(TITLE[d.type][1])}${d.q ? ' · ' + esc(d.q) : ''}</small></span><span class="go">참여</span></a>` : '';
-  };
-  const check = () => {
-    if (!document.getElementById(slot)) return clearInterval(bannerTimer);
-    if (document.visibilityState === 'visible') quiet('live').then(paint).catch(() => {});
-  };
-  paint(lastLive);
-  check();
-  bannerTimer = setInterval(check, 5000);
+  banner.slot = slot;
+  paintBanner();
+  checkBanner();
+  if (!banner.timer) banner.timer = setInterval(checkBanner, 1500);
 }
+document.addEventListener('visibilitychange', () => { if (banner.timer) checkBanner(); });
 
 // ---------- live screen ----------
 
+// What the screen draws: the activity plus this student's own answers (and own quiz points).
+function toView(st, m) {
+  const v = { id: st.id, type: st.type, q: st.q, options: list(st.options), show: !!st.show, anon: !!st.anon,
+    mine: { v: m.v, w: list(m.w), t: m.t || '' }, result: st.show ? st.result || null : null };
+  if (st.type === 'quiz') {
+    const z = st.quiz, a = m.qz && m.qz[z.i];
+    v.quiz = { title: z.title, i: z.i, n: z.n, phase: z.phase, limit: z.limit, q: z.q, options: list(z.options), mine: a ? { c: +a.c } : null };
+    if (z.phase !== 'ask') {
+      v.quiz.answer = +z.answer;
+      v.quiz.pts = a ? quizPoints(+a.c === +z.answer, a.ms, z.limit * 1000) : 0;
+      v.quiz.total = quizTotal(z.keys, z.limit, m);
+    }
+  }
+  return v;
+}
+
 export async function liveView() {
-  clearInterval(bannerTimer);
   const nav = currentNav();
-  let cur, shape = '', sending = 0, timer = 0, seenAny = false; // cur: undefined = not loaded yet, null = no activity
+  let st, cur, mine = {}, mineFor = '', resetAt = 0, shape = '', sending = 0, seenAny = false, online = true;
+  let me = null, stop = null;
   const seen = {}; // quiz question index → when this phone first showed it (answer speed is measured here)
 
-  const head = d => `<header class="lv-top"><a href="#/home" class="lv-back" aria-label="홈으로">‹</a><b>${d ? TITLE[d.type][0] + ' ' + esc(TITLE[d.type][1]) : '수업 활동'}</b>${d ? '<span class="lv-dot"><i></i>진행 중</span>' : ''}</header>`;
-  const stop = () => { clearInterval(timer); document.removeEventListener('visibilitychange', wake); };
+  const head = d => `<header class="lv-top"><a href="#/home" class="lv-back" aria-label="홈으로">‹</a><b>${d ? TITLE[d.type][0] + ' ' + esc(TITLE[d.type][1]) : '수업 활동'}</b>${d ? `<span class="lv-dot ${online ? '' : 'off'}"><i></i>${online ? '진행 중' : '다시 연결 중'}</span>` : ''}</header>`;
+  const close = () => { if (stop) stop(); stop = null; document.removeEventListener('visibilitychange', wake); };
   const ended = () => {
-    stop();
+    close();
     render(`${head(null)}<section class="lv-done"><div class="big">👋</div><b>${seenAny ? '활동이 끝났어요' : '지금 진행 중인 활동이 없어요'}</b><small>홈으로 돌아가요</small></section>`);
     setTimeout(() => { if (isCurrent(nav) && location.hash === '#/live') location.hash = '#/home'; }, 1800);
   };
-  const offline = () => {
+  const offline = err => {
     shape = '';
-    render(`${head(null)}<section class="lv-done"><div class="spin"></div><b class="no">다시 연결하는 중…</b><small>인터넷이 느리거나 잠시 끊겼어요. 자동으로 다시 시도해요.</small></section>`);
+    render(`${head(null)}<section class="lv-done"><div class="spin"></div><b class="no">다시 연결하는 중…</b><small>${esc(err && err.code !== 'offline' && err.message ? err.message : '인터넷이 느리거나 잠시 끊겼어요.')} 자동으로 다시 시도해요.</small></section>`);
   };
 
   // structure is drawn once per activity / quiz step; the dynamic part redraws without touching inputs
   const draw = () => {
-    if (!isCurrent(nav)) return stop();
-    if (!cur || !TITLE[cur.type]) return ended();
+    if (!isCurrent(nav)) return close();
+    if (!cur) return ended();
     seenAny = true;
     const z = cur.quiz;
-    const s = cur.id + cur.type + (z ? z.i + z.phase + !!z.mine : '') + cur.show;
+    const s = cur.id + cur.type + (z ? z.i + z.phase + !!z.mine : '') + cur.show + online;
     if (s !== shape) {
       shape = s;
       render(`${head(cur)}<section class="lv-phone">${cur.q && cur.type !== 'quiz' ? `<div class="lv-pq">${esc(cur.q)}</div>` : ''}${fixed()}<div id="lvDyn"></div></section>`);
@@ -65,6 +98,7 @@ export async function liveView() {
     const dyn = document.getElementById('lvDyn');
     if (dyn) dyn.innerHTML = dynamic();
   };
+  const update = () => { cur = fresh(st) ? toView(st, mine) : null; draw(); };
 
   const fixed = () => {
     if (cur.type === 'word') return `<form class="lv-send" id="lvSend"><input id="lvIn" maxlength="20" placeholder="한 단어" autocomplete="off" enterkeyhint="send"><button>보내기</button></form>`;
@@ -76,19 +110,19 @@ export async function liveView() {
     const m = cur.mine;
     const wait = sending ? '<p class="lv-note">보내는 중…</p>' : '';
     if (cur.type === 'vote') {
-      return cur.options.map((o, i) => `<button type="button" class="lv-opt ${m.v === i ? 'on' : ''}" data-v="${i}"><span>${i + 1}</span>${esc(o)}${cur.result ? `<em>${cur.result.counts[i]}</em>` : ''}</button>`).join('')
-        + (wait || `<p class="lv-note">${m.v !== undefined && m.v !== null ? '보냈어요 ✓ 다른 보기를 누르면 바꿀 수 있어요' : '누르면 바로 보내져요'}${cur.anon ? ' · 이름 없이' : ''}</p>`);
+      return cur.options.map((o, i) => `<button type="button" class="lv-opt ${m.v === i ? 'on' : ''}" data-v="${i}"><span>${i + 1}</span>${esc(o)}${cur.result ? `<em>${list(cur.result.counts)[i] || 0}</em>` : ''}</button>`).join('')
+        + (wait || `<p class="lv-note">${typeof m.v === 'number' ? '보냈어요 ✓ 다른 보기를 누르면 바꿀 수 있어요' : '누르면 바로 보내져요'}${cur.anon ? ' · 이름 없이' : ''}</p>`);
     }
     if (cur.type === 'light') {
       return `<p class="lv-note">언제든 바꿀 수 있어요 · 친구들은 못 봐요</p><div class="lv-lightbtns">${LIGHTS.map(([e, t], i) => `<button type="button" data-v="${i}" class="${m.v === i ? 'on' : ''}"><i>${e}</i>${t}</button>`).join('')}</div>${wait}`;
     }
     if (cur.type === 'word') {
       return (wait || `<p class="lv-note">${m.w.length}/3 보냄${m.w.length ? ' · ' + m.w.map(esc).join(', ') : ''}</p>`)
-        + (cur.result ? `<div class="lv-pcloud">${cur.result.words.map(w => `<span style="font-size:${14 + Math.min(20, w.n * 4)}px">${esc(w.w)}</span>`).join('')}</div>` : '');
+        + (cur.result ? `<div class="lv-pcloud">${list(cur.result.words).map(w => `<span style="font-size:${14 + Math.min(20, w.n * 4)}px">${esc(w.w)}</span>`).join('')}</div>` : '');
     }
     if (cur.type === 'text') {
       return (wait || `<p class="lv-note">${m.t ? '보냈어요 ✓' : ''}${cur.anon ? ' 이름 없이 보내져요' : ''}</p>`)
-        + (cur.result ? `<div class="lv-pcards">${cur.result.items.map(x => `<div>${esc(x.t)}</div>`).join('')}</div>` : '');
+        + (cur.result ? `<div class="lv-pcards">${list(cur.result.items).map(x => `<div>${esc(x.t)}</div>`).join('')}</div>` : '');
     }
     if (cur.type === 'quiz') {
       const z = cur.quiz;
@@ -105,18 +139,19 @@ export async function liveView() {
     return '';
   };
 
-  // optimistic: change `cur` and redraw now, then let the server answer replace it
-  const send = (op, v, optimistic) => {
+  const reloadMine = () => db('GET', `ans/${me.c}/${st.id}/${me.uid}`).then(m => { if (!sending && st && mineFor === st.id) { mine = m || {}; update(); } }).catch(() => {});
+  // optimistic: change this student's answers and redraw now, then write them (~0.3 s)
+  const send = (apply, method, sub, body) => {
+    if (!me || !st) return;
     sending++;
-    if (optimistic) optimistic(cur);
-    draw();
+    apply(mine);
+    update();
     if (navigator.vibrate) navigator.vibrate(30);
-    return call('liveAns', { id: cur.id, op, v }).then(d => { sending--; if (sending === 0) { cur = d; draw(); } })
+    db(method, `ans/${me.c}/${st.id}/${me.uid}${sub}`, body).then(() => { sending--; update(); })
       .catch(e => {
         sending--;
-        if (e.code === 'gone') { cur = null; draw(); return; }
-        toast(e.code === 'offline' ? '보내지 못했어요. 인터넷을 확인하고 다시 눌러 주세요' : e.message);
-        refresh(true);
+        toast(e.code === 'denied' ? (st.type === 'quiz' ? '이미 넘어간 문제예요' : '끝난 활동이에요') : e.code === 'offline' ? '보내지 못했어요. 인터넷을 확인하고 다시 눌러 주세요' : e.message);
+        reloadMine();
       });
   };
 
@@ -125,10 +160,10 @@ export async function liveView() {
     main.onclick = e => {
       const b = e.target.closest('button');
       if (!b || b.form) return;
-      if (b.dataset.v !== undefined) send('v', +b.dataset.v, c => { c.mine.v = +b.dataset.v; });
+      if (b.dataset.v !== undefined) { const v = +b.dataset.v, at = Date.now(); send(m => { m.v = v; m.at = at; }, 'PATCH', '', { v, at }); }
       else if (b.dataset.qz !== undefined) {
-        const i = cur.quiz.i, c = +b.dataset.qz;
-        send('qz', { i, c, ms: Date.now() - (seen[i] || Date.now()) }, x => { x.quiz.mine = { c }; });
+        const i = cur.quiz.i, c = +b.dataset.qz, ms = Date.now() - (seen[i] || Date.now());
+        send(m => { m.qz = { ...(m.qz || {}), [i]: { c, ms } }; }, 'PUT', `/qz/${i}`, { c, ms });
       }
     };
     const f = document.getElementById('lvSend');
@@ -137,24 +172,39 @@ export async function liveView() {
       const inp = document.getElementById('lvIn'), v = inp.value.trim();
       if (!v) return;
       if (cur.type === 'word') {
-        if (cur.mine.w.length >= 3) return toast('단어는 3번까지 보낼 수 있어요');
+        const k = list(mine.w).length;
+        if (k >= 3) return toast('단어는 3번까지 보낼 수 있어요');
         inp.value = '';
-        send('w', v, c => { c.mine.w = [...c.mine.w, v]; });
-      } else send('t', v, c => { c.mine.t = v; });
+        send(m => { m.w = [...list(m.w), v]; }, 'PUT', `/w/${k}`, v);
+      } else {
+        const at = Date.now();
+        send(m => { m.t = v; m.at = at; }, 'PATCH', '', { t: v, at });
+      }
     };
   };
 
-  const refresh = force => {
-    if (!isCurrent(nav)) return stop();
-    if ((sending && !force) || document.visibilityState !== 'visible') return;
-    quiet('live').then(d => { if (!sending && isCurrent(nav)) { cur = d; draw(); } })
-      .catch(() => { if (cur === undefined && isCurrent(nav)) offline(); });
+  const onLive = v => {
+    if (!isCurrent(nav)) return close();
+    st = v;
+    if (fresh(v)) {
+      if (mineFor !== v.id) { mineFor = v.id; mine = {}; resetAt = v.resetAt || 0; reloadMine(); }
+      else if (v.resetAt && v.resetAt !== resetAt) { resetAt = v.resetAt; delete mine.v; }
+    }
+    update();
   };
-  // a phone that was locked or switched away catches up as soon as it is back
-  const wake = () => { if (document.visibilityState === 'visible') refresh(); };
+  const onStatus = (status, err) => {
+    online = status === 'ok';
+    if (!online && cur === undefined) offline(err);
+    else if (cur) draw();
+  };
+  const open = () => {
+    if (stop) stop();
+    stop = followClass(onLive, onStatus, s => { me = s; });
+  };
+  // a phone that was locked or switched away reconnects at once to catch up
+  const wake = () => { if (document.visibilityState === 'visible' && isCurrent(nav)) open(); };
   document.addEventListener('visibilitychange', wake);
 
   render(`${head(null)}<section class="lv-done"><div class="spin"></div></section>`);
-  timer = setInterval(refresh, 2500);
-  try { cur = await call('live'); draw(); } catch (e) { if (e.code === 'auth') { stop(); throw e; } offline(); }
+  open();
 }
