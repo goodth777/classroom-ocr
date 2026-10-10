@@ -1,8 +1,7 @@
-// Live classroom activities (vote, word cloud, one-line opinions, understanding lights, hands & questions, paced quiz).
+// Live classroom activities (vote, word cloud, one-line opinions, understanding lights, paced quiz).
 // Pure functions only: the server (Live.js), the tests and the preview mock all use them.
-// st   = activity state { id, type, q, options, anon, show, hidden, quiz: { qs: [{title, options, answer}], i, phase, limit } }
-// ans  = { studentId: { v, w: [], t, hand, qz: { i: { c, ms } } } }   (each student writes only their own entry)
-// qs   = questions box [{ id, text, sid, at, likes: [studentId], done }]
+// st  = activity state { id, type, q, options, anon, show, hidden, quiz: { qs: [{title, options, answer}], i, phase, limit } }
+// ans = { studentId: { v, w: [], t, at, qz: { i: { c, ms } } } }   (each student writes only their own entry)
 
 const liveKey = s => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -25,7 +24,7 @@ function quizTotal(st, d) {
 }
 
 // What the teacher's screen shows. Anonymous activities drop every student id.
-function liveSummary(st, ans, qs) {
+function liveSummary(st, ans) {
   const ids = Object.keys(ans || {});
   const hidden = new Set((st.hidden || []).map(liveKey));
   const out = { type: st.type };
@@ -57,10 +56,6 @@ function liveSummary(st, ans, qs) {
     out.who = {};
     ids.forEach(id => { const v = ans[id].v; if (v === 0 || v === 1 || v === 2) { out.counts[v]++; if (!st.anon) out.who[id] = v; } });
     out.n = out.counts.reduce((a, b) => a + b, 0);
-  } else if (st.type === 'hand') {
-    out.hands = ids.filter(id => ans[id].hand).map(id => ({ sid: id, at: ans[id].hand })).sort((a, b) => String(a.at).localeCompare(String(b.at)));
-    out.qs = sortQs(qs || []).map(q => ({ id: q.id, text: q.text, likes: (q.likes || []).length, done: !!q.done, at: q.at }));
-    out.n = out.hands.length;
   } else if (st.type === 'quiz') {
     const z = st.quiz;
     out.per = z.qs.map((q, i) => {
@@ -75,20 +70,15 @@ function liveSummary(st, ans, qs) {
   return out;
 }
 
-const sortQs = qs => qs.slice().sort((a, b) => (!!a.done - !!b.done) || ((b.likes || []).length - (a.likes || []).length) || String(a.at).localeCompare(String(b.at)));
-
 // What one student's phone shows. Quiz answers stay hidden until the question is revealed.
-function livePublic(st, sum, sid, mine, qs) {
+function livePublic(st, sum, mine) {
   mine = mine || {};
   const out = { id: st.id, type: st.type, q: st.q, options: st.options || [], show: !!st.show, anon: !!st.anon,
-    mine: { v: mine.v, w: mine.w || [], t: mine.t || '', hand: !!mine.hand } };
+    mine: { v: mine.v, w: mine.w || [], t: mine.t || '' } };
   if (st.show && sum) {
     if (st.type === 'vote') out.result = { counts: sum.counts, n: sum.n };
     if (st.type === 'word') out.result = { words: sum.words.slice(0, 30), n: sum.n };
     if (st.type === 'text') out.result = { items: sum.items.map(x => ({ t: x.t })), n: sum.n };
-  }
-  if (st.type === 'hand') {
-    out.qs = sortQs(qs || []).map(q => ({ id: q.id, text: q.text, likes: (q.likes || []).length, liked: (q.likes || []).includes(sid), done: !!q.done, own: q.sid === sid }));
   }
   if (st.type === 'quiz') {
     const z = st.quiz, q = z.qs[z.i] || { title: '', options: [] };
@@ -103,9 +93,8 @@ function livePublic(st, sum, sid, mine, qs) {
   return out;
 }
 
-// Applies one student action to their own entry (and the shared questions box for 'q' / 'like').
-// Returns an error message, or '' when done. `now` is an ISO time.
-function liveApply(st, mine, qs, sid, op, v, now, newId) {
+// Applies one student action to their own entry. Returns an error message, or '' when done. `now` is an ISO time.
+function liveApply(st, mine, op, v, now) {
   if (op === 'v' && (st.type === 'vote' || st.type === 'light')) {
     const n = st.type === 'light' ? 3 : (st.options || []).length;
     if (!(Number.isInteger(+v) && +v >= 0 && +v < n)) return '다시 골라 주세요.';
@@ -121,18 +110,6 @@ function liveApply(st, mine, qs, sid, op, v, now, newId) {
     if (!t) return '의견을 써 주세요.';
     mine.t = t;
     mine.at = now;
-  } else if (op === 'hand' && st.type === 'hand') {
-    mine.hand = v ? (mine.hand || now) : '';
-  } else if (op === 'q' && st.type === 'hand') {
-    const t = String(v || '').trim().slice(0, 200);
-    if (!t) return '질문을 써 주세요.';
-    if (qs.filter(q => q.sid === sid).length >= 5) return '질문은 5개까지 보낼 수 있어요.';
-    qs.push({ id: newId, text: t, sid, at: now, likes: [], done: false });
-  } else if (op === 'like' && st.type === 'hand') {
-    const q = qs.find(x => x.id === v);
-    if (!q) return '질문을 찾을 수 없어요.';
-    q.likes = q.likes || [];
-    if (q.likes.includes(sid)) q.likes = q.likes.filter(x => x !== sid); else q.likes.push(sid);
   } else if (op === 'qz' && st.type === 'quiz') {
     const z = st.quiz, i = +(v && v.i);
     if (i !== z.i || z.phase !== 'ask') return '이미 넘어간 문제예요.';

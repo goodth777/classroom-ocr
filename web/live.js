@@ -4,7 +4,7 @@
 export const SHAPES = ['▲', '◆', '●', '■', '★', '♥'];
 export const QCOLORS = ['#e2574c', '#3f7fe0', '#d9a520', '#2aa772', '#9b6ad6', '#e0679e'];
 const LIGHTS = [['🟢', '이해했어요', '#2fd39a'], ['🟡', '조금 헷갈려요', '#f7e07a'], ['🔴', '모르겠어요', '#ff8a6b']];
-const NAMES = { vote: '투표', word: '단어 구름', text: '한 줄 의견', light: '이해도 신호등', hand: '손들기·질문함', quiz: '함께 푸는 퀴즈' };
+const NAMES = { vote: '투표', word: '단어 구름', text: '한 줄 의견', light: '이해도 신호등', quiz: '함께 푸는 퀴즈' };
 const when = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 // ---------- result painters (live screen and saved records share them) ----------
@@ -38,14 +38,6 @@ function paintLight(T, st, sum, o = {}) {
     ${o.showNames && who.length ? `<div class="lv-who">${who.sort((a, b) => sum.who[b] - sum.who[a]).map(id => `<span style="--c:${LIGHTS[sum.who[id]][2]}">${T.esc(names[id] || '?')}</span>`).join('')}</div>` : ''}</div>`;
 }
 
-function paintHand(T, st, sum, o = {}) {
-  const names = o.names || {};
-  return `<div class="lv-qa"><div class="lv-col"><h3>✋ 손든 학생 <small>${sum.hands.length}명</small>${o.live && sum.hands.length ? `<button type="button" class="btn" data-ctl="reset">모두 내리기</button>` : ''}</h3>
-      ${sum.hands.map((h, i) => `<div class="lv-hand ${i === 0 ? 'first' : ''}"><span class="n">${i + 1}</span>${T.esc(names[h.sid] || '?')}${o.live ? `<button type="button" data-ctl="handok" data-arg="${h.sid}">확인</button>` : ''}</div>`).join('') || '<p class="muted">손든 학생이 없어요</p>'}</div>
-    <div class="lv-col"><h3>💬 질문함 <small>공감 많은 순 · 이름 없이</small></h3>
-      ${sum.qs.map(q => `<div class="lv-qc ${q.done ? 'done' : ''}"><p>${T.esc(q.text)}</p><span class="lk">👍 ${q.likes}</span>${o.live ? `<button type="button" data-ctl="qdone" data-arg="${q.id}">${q.done ? '되돌리기' : '답변함'}</button>` : q.done ? '<small>답변함</small>' : ''}</div>`).join('') || '<p class="muted">아직 질문이 없어요</p>'}</div></div>`;
-}
-
 function paintQuizEnd(T, st, sum, o = {}) {
   const z = st.quiz, names = o.names || {};
   const scores = Object.entries(sum.score || {});
@@ -66,7 +58,7 @@ function paintQuiz(T, st, sum, o = {}) {
     <div class="lv-foot">낸 학생 <b>${p.n}</b>/${o.total || '?'}</div></div>`;
 }
 
-const PAINT = { vote: paintVote, word: paintWord, text: paintText, light: paintLight, hand: paintHand, quiz: paintQuiz };
+const PAINT = { vote: paintVote, word: paintWord, text: paintText, light: paintLight, quiz: paintQuiz };
 
 // ---------- shared runner ----------
 
@@ -232,20 +224,6 @@ export function drawLight(T) {
       Object.assign(cfg, { anon: box.querySelector('#lvAnon').checked, push: box.querySelector('#lvPush').checked });
       T.set('lightCfg', cfg);
       start({ type: 'light', q: box.querySelector('#lvQ').value.trim(), anon: cfg.anon, push: cfg.push });
-    };
-  });
-}
-
-export function drawHand(T) {
-  const cfg = T.get('handCfg', { push: true });
-  return liveTool(T, ['hand'], (box, start) => {
-    box.innerHTML = `<form><h3>${T.fa('hand')} 손들기·질문함 시작하기</h3><p class="muted small">손든 순서대로 줄을 서요. 질문은 이름 없이 보내지고, 다른 학생이 👍로 공감하면 위로 올라와요.</p>
-      ${check('lvPush', '학생 휴대폰에 알림도 보내기', cfg.push)}${go(`${T.fa('play')}시작`)}</form>`;
-    box.onsubmit = e => {
-      e.preventDefault();
-      cfg.push = box.querySelector('#lvPush').checked;
-      T.set('handCfg', cfg);
-      start({ type: 'hand', q: '손들기·질문함', push: cfg.push });
     };
   });
 }

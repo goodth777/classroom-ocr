@@ -27,12 +27,9 @@ function noise(start, dur, { vol = .25, freq = 2000, q = .7, type = 'bandpass' }
 const SOUNDS = {
   chime: () => { [880, 1320, 1760].forEach((f, i) => tone(f, i * .02, 1.8, { vol: .16 / (i + 1) })); tone(660, .5, 1.6, { vol: .1 }); },
   ding: () => { tone(988, 0, .35, { vol: .22 }); tone(1319, .16, .6, { vol: .22 }); },
-  buzz: () => { tone(220, 0, .35, { type: 'square', vol: .08 }); tone(196, .18, .45, { type: 'square', vol: .08 }); },
-  clap: () => { for (let i = 0; i < 14; i++) noise(i * .09 + Math.random() * .04, .08, { vol: .35, freq: 1500 + Math.random() * 800 }); },
-  count: () => { [0, 1, 2].forEach(i => tone(660, i, .18, { vol: .2 })); tone(1320, 3, .7, { vol: .22 }); },
   drumroll: () => { for (let i = 0; i < 26; i++) noise(i * .05, .06, { vol: .12 + i * .008, freq: 180, q: 1, type: 'lowpass' }); noise(1.35, .5, { vol: .4, freq: 3000 }); },
   fanfare: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .12, i === 3 ? .7 : .16, { type: 'triangle', vol: .2 })); },
-  shh: () => noise(0, 1.2, { vol: .18, freq: 3500, q: .5 }),
+  tick: () => tone(2400, 0, .025, { type: 'square', vol: .04 }),
   roll: () => { for (let i = 0; i < 8; i++) noise(i * .07, .05, { vol: .2, freq: 900 + Math.random() * 600, q: 2 }); },
 };
 

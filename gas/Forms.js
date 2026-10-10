@@ -3,7 +3,8 @@
 const MAX_FORM_JSON_ = 30000;
 const FORM_KINDS_ = { survey: '📊 새 설문 · ', quiz: '🎯 새 퀴즈 · ', reply: '✅ 회신 요청 · ' };
 
-const parse_ = (s, d) => { try { return JSON.parse(s); } catch (e) { return d; } };
+// JSON.parse(null) is null, not an error: a missing cache entry must still give the default.
+const parse_ = (s, d) => { try { const v = JSON.parse(s); return v == null ? d : v; } catch (e) { return d; } };
 const formOut_ = f => ({
   id: f.id, classId: f.classId, kind: f.kind, title: f.title, desc: f.desc, due: f.due, studentIds: f.studentIds,
   questions: parse_(f.questions, []), settings: parse_(f.settings, {}), status: f.status, created: f.created, updated: f.updated, sent: f.sent,

@@ -1,7 +1,7 @@
 // Network-first so updates show immediately; cached shell keeps the app opening offline.
-const CACHE = 'shell-v24';
+const CACHE = 'shell-v25';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'ui.js', 'api.js', 'lib.js', 'config.js',
-  'store.js', 'outbox.js', 'inbox.js', 'push.js', 'fa.js', 'qr.js', 'vendor/qrcode.js', 'seatlogic.js', 'seats.js', 'seatshow.js', 'formlogic.js', 'forms.js', 'sform.js', 'attach.js', 'tools.js', 'tools2.js', 'grouplogic.js', 'live.js', 'slive.js', 'sfx.js', 'join.js', 'student.js', 'teacher.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
+  'store.js', 'outbox.js', 'inbox.js', 'push.js', 'fa.js', 'qr.js', 'vendor/qrcode.js', 'seatlogic.js', 'seats.js', 'seatshow.js', 'formlogic.js', 'forms.js', 'sform.js', 'attach.js', 'tools.js', 'live.js', 'slive.js', 'sfx.js', 'join.js', 'student.js', 'teacher.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/favicon-32.png'];
 
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
