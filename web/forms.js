@@ -205,6 +205,7 @@ function header(f, tab) {
   const n = f.responses || 0, tot = f.targets || (ctx.v.roster || []).length;
   return `<div class="sv-head"><a class="sv-back" href="#/t/${F.cls}/forms" aria-label="목록">${fa('chevron-left')}</a>${kindChip(f.kind)}
     <h2>${esc(f.title || '제목 없음')}</h2><span class="sp"></span>
+    ${f.kind === 'quiz' && tab === 'q' ? `<button type="button" class="btn" id="svLive" title="학생에게 보내지 않아도 돼요">${fa('chalkboard-user')}수업에서 함께 풀기</button>` : ''}
     <nav class="seg2 sv-tabs"><a href="#/t/${F.cls}/forms/${f.id}" class="${tab === 'q' ? 'on' : ''}">질문</a><a href="#/t/${F.cls}/forms/${f.id}/a" class="${tab === 'a' ? 'on' : ''}">응답 ${n}/${tot}</a></nav></div>`;
 }
 
@@ -379,6 +380,22 @@ function bindBuilder(f) {
     go('');
   };
   if ($('#svSend')) $('#svSend').onclick = () => setStatus(f, 'live');
+  // Plays this quiz live (수업 도구 → 함께 푸는 퀴즈), which reads it from the server: save the latest edits first.
+  if ($('#svLive')) $('#svLive').onclick = async () => {
+    const playable = f.questions.filter(q => q.type === 'mc' && (q.options || []).length >= 2 && q.answer !== undefined && q.answer !== null && q.answer !== '');
+    if (!playable.length) return toast('정답을 표시한 객관식 문항이 있어야 함께 풀 수 있어요');
+    const b = $('#svLive');
+    b.disabled = true;
+    b.innerHTML = `${fa('floppy-disk')}저장 중…`;
+    if (F.sync[f.id] || f.local) await pushForm(f.id);
+    if (F.sync[f.id] === 'fail') {
+      b.disabled = false;
+      b.innerHTML = `${fa('chalkboard-user')}수업에서 함께 풀기`;
+      return toast('아직 저장하지 못했어요. 인터넷을 확인하고 다시 눌러 주세요');
+    }
+    lsSet('quizPick:' + F.cls, f.id);
+    location.hash = `#/t/${F.cls}/tools/quiz`;
+  };
   if ($('#svClose')) $('#svClose').onclick = () => { if (confirm('지금 마감할까요? 더 이상 답을 받지 않아요.')) setStatus(f, 'closed'); };
   if ($('#svReopen')) $('#svReopen').onclick = () => { if (f.due && nowKst() > f.due) return toast('마감 시간을 먼저 뒤로 바꿔 주세요'); setStatus(f, 'live'); };
 }

@@ -349,10 +349,15 @@ export function drawQuiz(T) {
     T.quiet('forms', { classId: T.ctx.cls.id }).then(forms => {
       const quizzes = forms.filter(f => f.kind === 'quiz').map(f => ({ f, n: f.questions.filter(usable).length })).filter(x => x.n);
       if (!quizzes.length) { box.innerHTML = `<div class="tl-empty">정답이 있는 객관식 문항으로 된 퀴즈가 없어요.<br><small>퀴즈·회신 탭에서 퀴즈를 먼저 만들어 주세요.</small></div>`; return; }
-      box.innerHTML = `<form><h3>${T.fa('graduation-cap')} 함께 푸는 퀴즈 시작하기</h3><p class="muted small">퀴즈·회신 탭의 퀴즈 중 정답이 있는 객관식 문항만 한 문제씩 띄워요. 순위는 보여 주지 않아요.</p>
-        <div class="lv-quizzes">${quizzes.map(({ f, n }, i) => `<label class="lv-qpick"><input type="radio" name="lvQz" value="${f.id}" ${i === 0 ? 'checked' : ''}><b>${T.esc(f.title || '제목 없는 퀴즈')}</b><small>객관식 ${n}문항${n < f.questions.length ? ` (나머지 ${f.questions.length - n}개는 빼요)` : ''}</small></label>`).join('')}</div>
+      // a quiz opened with "수업에서 함께 풀기" in the quiz editor comes pre-selected
+      const pickKey = 'quizPick:' + T.ctx.cls.id, pick = T.get(pickKey, null);
+      T.set(pickKey, null);
+      const sel = quizzes.some(x => x.f.id === pick) ? pick : quizzes[0].f.id;
+      box.innerHTML = `<form><h3>${T.fa('graduation-cap')} 함께 푸는 퀴즈 시작하기</h3><p class="muted small">퀴즈·회신 탭의 퀴즈 중 정답이 있는 객관식 문항만 한 문제씩 띄워요. 학생에게 보내지 않은 초안도 쓸 수 있어요. 순위는 보여 주지 않아요.</p>
+        <div class="lv-quizzes">${quizzes.map(({ f, n }) => `<label class="lv-qpick"><input type="radio" name="lvQz" value="${f.id}" ${f.id === sel ? 'checked' : ''}><b>${T.esc(f.title || '제목 없는 퀴즈')}</b><small>객관식 ${n}문항${n < f.questions.length ? ` (나머지 ${f.questions.length - n}개는 빼요)` : ''}</small></label>`).join('')}</div>
         <div class="lv-row">문제당 시간 <div class="seg2" id="lvLim">${[10, 20, 30, 60].map(s => `<button type="button" data-l="${s}" class="${cfg.limit === s ? 'on' : ''}">${s}초</button>`).join('')}</div></div>
         ${check('lvPush', '학생 휴대폰에 알림도 보내기', cfg.push)}${go(`${T.fa('play')}시작`)}</form>`;
+      box.querySelector('[name=lvQz]:checked').closest('label').scrollIntoView({ block: 'nearest' });
       box.onclick = e => { const b = e.target.closest('[data-l]'); if (b) { cfg.limit = +b.dataset.l; T.set('quizCfg', cfg); box.querySelectorAll('[data-l]').forEach(x => x.classList.toggle('on', x === b)); } };
       box.onsubmit = e => {
         e.preventDefault();
